@@ -1,7 +1,11 @@
 import Link from "next/link";
-import { getPostsByTag } from "@/lib/posts";
+import { getPostsByTag, getAllTags } from "@/lib/posts";
 
 export const dynamic = "force-static";
+
+export function generateStaticParams() {
+  return getAllTags().map((t) => ({ tag: t }));
+}
 
 export default function TagPage({ params }: { params: { tag: string } }) {
   const posts = getPostsByTag(params.tag);

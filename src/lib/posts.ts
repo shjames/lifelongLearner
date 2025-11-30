@@ -72,14 +72,19 @@ export function getPostsByCategory(category: PostMeta["category"]): Post[] {
 }
 
 export function getPostsByTag(tag: string): Post[] {
-  const t = tag.toLowerCase();
-  return getAllPosts().filter((p) => p.tags.map((x) => x.toLowerCase()).includes(t));
+  const t = String(tag ?? "").toLowerCase();
+  if (!t) return [];
+  return getAllPosts().filter((p) => p.tags.filter(Boolean).map((x) => String(x).toLowerCase()).includes(t));
 }
 
 export function getAllTags(): string[] {
   const set = new Set<string>();
-  for (const p of getAllPosts()) p.tags.forEach((t) => set.add(t));
-  return Array.from(set).sort((a, b) => a.localeCompare(b));
+  for (const p of getAllPosts()) p.tags.forEach((t) => set.add(String(t)));
+  const tags = Array.from(set)
+    .filter((t) => !!t && typeof t === "string")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  return tags.sort((a, b) => a.localeCompare(b));
 }
 
 export function getAllCategories(): PostMeta["category"][] {
@@ -93,7 +98,7 @@ export function searchPosts(query: string): Post[] {
     return (
       p.title.toLowerCase().includes(q) ||
       p.summary.toLowerCase().includes(q) ||
-      p.tags.some((t) => t.toLowerCase().includes(q))
+      p.tags.filter(Boolean).some((t) => String(t).toLowerCase().includes(q))
     );
   });
 }

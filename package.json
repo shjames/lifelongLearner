@@ -6,8 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "cf:build": "npx @cloudflare/next-on-pages@1"
+    "preview": "wrangler pages dev .vercel/output/static",
+    "deploy": "npm run build && wrangler pages deploy .vercel/output/static"
   },
   "dependencies": {
     "@giscus/react": "^3.1.0",
@@ -28,6 +28,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "baseline-browser-mapping": "^2.8.32",
     "eslint": "^9",
     "eslint-config-next": "16.0.4",
     "tailwindcss": "^4",

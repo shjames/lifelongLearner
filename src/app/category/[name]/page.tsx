@@ -1,7 +1,11 @@
 import Link from "next/link";
-import { getPostsByCategory } from "@/lib/posts";
+import { getPostsByCategory, getAllCategories } from "@/lib/posts";
 
 export const dynamic = "force-static";
+
+export function generateStaticParams() {
+  return getAllCategories().map((c) => ({ name: c }));
+}
 
 export default function CategoryPage({ params }: { params: { name: string } }) {
   const posts = getPostsByCategory(params.name as any);
