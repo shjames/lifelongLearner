@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getPostBySlug } from "@/lib/posts";
+import { getPostBySlug, getAllPosts } from "@/lib/posts";
 import { MDXContent } from "@/components/mdx-content";
 import { Comments } from "@/components/giscus";
 import { ShareButtons } from "@/components/share";
@@ -9,8 +9,7 @@ type Params = { slug?: string[] | string };
 export const dynamic = "force-static";
 
 export function generateStaticParams() {
-  // Let the app router discover files at runtime. Static params can be added if needed.
-  return [] as { slug: string[] }[];
+  return getAllPosts().map((p) => ({ slug: p.slug.split("/") }));
 }
 
 export default async function PostPage(props: { params: Params | Promise<Params> }) {
