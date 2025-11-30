@@ -1,6 +1,6 @@
-name = "lifelongLearner"
+name = "life-long-learner"
 compatibility_date = "2025-11-30"
-pages_build_output_dir = ".vercel/output/static"
+pages_build_output_dir = "out"
 
 [env.production]
 routes = [
