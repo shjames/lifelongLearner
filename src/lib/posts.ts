@@ -57,11 +57,16 @@ export function getAllPosts(): Post[] {
 }
 
 export function getPostBySlug(slug: string): Post | null {
-  console.log(4444)
-  const segs = slug.split("/").filter(Boolean);
-  
-
-  console.log('segs',segs,555,slug)
+  const segs = slug
+    .split("/")
+    .filter(Boolean)
+    .map((s) => {
+      try {
+        return decodeURIComponent(s);
+      } catch {
+        return s;
+      }
+    });
   const full = path.join(CONTENT_DIR, ...segs) + ".mdx";
   if (!fs.existsSync(full)) return null;
   return fileToPost(full);
