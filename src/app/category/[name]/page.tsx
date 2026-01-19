@@ -7,15 +7,26 @@ export function generateStaticParams() {
   return getAllCategories().map((c) => ({ name: c }));
 }
 
-export default function CategoryPage({ params }: { params: { name: string } }) {
-  const posts = getPostsByCategory(params.name as any);
+type CategoryParams = { name: string };
+
+export default async function CategoryPage({
+  params,
+}: {
+  params: CategoryParams | Promise<CategoryParams>;
+}) {
+  const result = await Promise.resolve(params);
+  console.log(4455, result);
+  const posts = getPostsByCategory(result?.name as any);
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
-      <h1 className="text-3xl font-bold">分类：{params.name}</h1>
+      <h1 className="text-3xl font-bold">分类：{result?.name}</h1>
       <ul className="mt-6 space-y-6">
         {posts.map((p) => (
           <li key={p.slug} className="border-b pb-6">
-            <Link href={`/blog/${p.slug}`} className="text-xl font-semibold hover:underline">
+            <Link
+              href={`/blog/${p.slug}`}
+              className="text-xl font-semibold hover:underline"
+            >
               {p.title}
             </Link>
             <div className="mt-1 text-sm text-zinc-500">
@@ -30,4 +41,3 @@ export default function CategoryPage({ params }: { params: { name: string } }) {
     </div>
   );
 }
-

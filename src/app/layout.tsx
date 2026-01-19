@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -27,14 +28,14 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}> 
         <header className="border-b bg-white/60 backdrop-blur">
           <nav className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
-            <a href="/" className="font-semibold">Lifelong Learner</a>
+            <Link href="/" className="font-semibold">Lifelong Learner</Link>
             <div className="flex items-center gap-4 text-sm">
-              <a href="/blog" className="hover:underline">博客</a>
-              <a href="/category/dev" className="hover:underline">开发</a>
-              <a href="/category/diary" className="hover:underline">日记</a>
-              <a href="/category/essays" className="hover:underline">随笔</a>
-              <a href="/category/opinions" className="hover:underline">观点</a>
-              <a href="/search" className="hover:underline">搜索</a>
+              <Link href="/blog" className="hover:underline">博客</Link>
+              <Link href="/category/dev" className="hover:underline">开发</Link>
+              <Link href="/category/diary" className="hover:underline">日记</Link>
+              <Link href="/category/essays" className="hover:underline">随笔</Link>
+              <Link href="/category/opinions" className="hover:underline">观点</Link>
+              <Link href="/search" className="hover:underline">搜索</Link>
             </div>
           </nav>
         </header>
