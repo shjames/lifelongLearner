@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "node scripts/sync-content-to-public.mjs && node scripts/sync-content-encoded-to-public.mjs",
+   
     "dev": "next dev",
-    "prebuild": "node scripts/sync-content-to-public.mjs && node scripts/sync-content-encoded-to-public.mjs",
+   
     "build": "next build",
     "start": "next start",
     "preview": "wrangler pages dev .vercel/output/static",

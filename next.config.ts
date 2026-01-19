@@ -1,12 +1,12 @@
-import type { NextConfig } from 'next'
-
-const nextConfig: NextConfig = {
+const nextConfig = {
   output: 'export',
   trailingSlash: true,
   images: {
     unoptimized: true,
   },
-  experimental: {},
+  turbopack: {
+    root: __dirname,
+  },
 }
 
 export default nextConfig

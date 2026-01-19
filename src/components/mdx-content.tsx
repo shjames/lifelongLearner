@@ -4,9 +4,20 @@ import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import { Gallery } from "@/components/gallery";
-import { ContentImg, ImagesManual } from "@/components/content-image";
+import {
+  ContentImg,
+  ImagesManual,
+  ContentImgPublic,
+  ImagesManualPublic,
+} from "@/components/content-image";
 
-const components = { Gallery, ContentImg, ImagesManual };
+const components = {
+  Gallery,
+  ContentImg,
+  ImagesManual,
+  ContentImgPublic,
+  ImagesManualPublic,
+};
 
 export function MDXContent({ source }: { source: string }) {
   return (

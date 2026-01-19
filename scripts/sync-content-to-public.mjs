@@ -39,6 +39,6 @@ function walk(src, destBase) {
 }
 
 ensureDir(PUBLIC_CONTENT_DIR);
-walk(CONTENT_DIR, path.join(ROOT, "public"));
+walk(CONTENT_DIR, PUBLIC_CONTENT_DIR);
 console.log("[sync-content-to-public] copied non-mdx assets from content/ to public/content/");
 
