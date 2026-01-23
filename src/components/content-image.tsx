@@ -114,11 +114,13 @@ export function ImagesManualPublic({
             map = JSON.parse(txt);
           }
         } catch {}
-        const ext = map[n] || "";
-        return (
+        const ext = map[n];
+        return ext ? (
           <a key={n} href={ext} target="_blank" rel="noopener noreferrer">
             <img src={src} alt={n} className="w-full h-auto" />
           </a>
+        ) : (
+          <img src={src} alt={n} className="w-full h-auto" />
         );
       })}
     </div>
