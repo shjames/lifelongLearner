@@ -33,7 +33,7 @@ export default function RootLayout({
               <Link href="/blog" className="hover:underline">博客</Link>
               <Link href="/category/dev" className="hover:underline">开发</Link>
               <Link href="/category/note" className="hover:underline">笔记</Link>
-              <Link href="/category/diary" className="hover:underline">日记</Link>
+              <Link href="/diary" className="hover:underline">日记</Link>
               <Link href="/category/essays" className="hover:underline">随笔</Link>
               <Link href="/category/opinions" className="hover:underline">观点</Link>
               <Link href="/search" className="hover:underline">搜索</Link>
