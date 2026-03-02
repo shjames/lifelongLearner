@@ -8,7 +8,7 @@ export type PostMeta = {
   date: string; // ISO date string
   tags: string[];
   summary: string;
-  category: "dev" | "diary" | "essays" | "opinions";
+  category: string;
   slug: string;
   readingTime: string;
 };
@@ -93,7 +93,7 @@ export function getAllTags(): string[] {
 }
 
 export function getAllCategories(): PostMeta["category"][] {
-  return ["dev", "diary", "essays", "opinions"];
+  return ["dev", "note", "diary", "essays", "opinions"];
 }
 
 export function searchPosts(query: string): Post[] {
