@@ -10,13 +10,14 @@ import {
   ContentImgPublic,
   ImagesManualPublic,
 } from "@/components/content-image";
-
+import Image from "@/components/Image";
 const components = {
   Gallery,
   ContentImg,
   ImagesManual,
   ContentImgPublic,
   ImagesManualPublic,
+  Image
 };
 
 export function MDXContent({ source }: { source: string }) {
