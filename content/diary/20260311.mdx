@@ -1,0 +1,29 @@
+---
+title: 日记：2026/03/02
+tags:
+  - 日记
+  - 生活记录
+  - 日常思考
+summary: 天气阴，24℃，Wednesday
+category: diary
+---
+
+
+window  安装openclaw  报错解决：
+
+报错代码：
+<img src='/diary/images/6.jpg'  alt="斧头砍鱼" className="w-full h-auto" />
+
+解决方法：
+<img src='/diary/images/5.png'  alt="斧头砍鱼" className="w-full h-auto" />
+
+相关代码：
+
+```
+ Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vs_BuildTools.exe" -OutFile "$env:TEMP\vs_BuildTools.exe"
+
+```
+```
+Start-Process -FilePath "$env:TEMP\vs_BuildTools.exe" -ArgumentList "--quiet", "--wait", "--norestart", "--nocache", "--add", "Microsoft.VisualStudio.Workload.VCTools", "--includeRecommended" -Wait
+```
+
