@@ -8,81 +8,108 @@ summary: 天气阴，21℃，Saturday
 category: diary
 ---
 
-openclaw 如何创建多个agent ？
+# openclaw 如何创建多个agent ？
 
 ps:以下所有示例使用的agent名称为cowboy，看到代码有cowboy的地方，代表的就是该agent的相关配置
 
 
+## 准备工作：创建飞书应用
+
 首先我选择的channel是飞书，所以得先去飞书开发后台创建一个应用
 
-<img src='/diary/images/feishu.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/feishu.png)
 
 下面省略掉怎么新建一个应用的部分（如果需要，网上很多教程）
 
+
+## 最简单的创建方法（自然语言方式）
+
 最简单的创建一个agent的方法是，在openclaw的对话窗口中，直接把你飞书应用的APP ID和APP SECRET
 
-<img src='/diary/images/feishu2.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/feishu2.png)
 
 使用自然语言叫你的虾虾自己帮你创建，有什么报错它自己会根据日志帮你解决，哪哪都好，就是......消耗token，也就是要钱，如果你不介意，那下面的教程可以不看了。下面记录的就是手动创建一个agent时的一些报错及解决方法
 
+
 --------------
+
+
+## 手动创建 agent 及问题解决
+
+### 第一步：创建 agent 工作空间
 
 首先在终端中输入命令：openclaw agents add  你的agent名称
 
 会自动根据你的agent名称创建一个独立的工作空间(其实就是一个文件夹)，这样就可以实现和其他agents隔离，互不干扰。
 
-<img src='/diary/images/space.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/space.png)
+
+### 第二步：选择 channel
 
 因为我们上文说的channel是飞书，所在在select channel时，直接选择飞书。
 
-<img src='/diary/images/channel_feishu.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/channel_feishu.png)
 
 该过程中的其他配置项选择也略过，因为每个人的需求不一样（比如model的选择、channel的选择等），根据自己的需求选择即可。
 
 
+### 第三步：配置 secret
+
 提供secret的方式我这里选择的是直接写入到本地的配置文件中
 
 
-<img src='/diary/images/secret.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/secret.png)
 
-<img src='/diary/images/appid.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/appid.png)
+
+### 第四步：查看配置变更
 
 所有配置项选完以后，主要的变更是多了存放当前agent的配置文件，以及在openclaw.json这个配置文件中，对刚刚设置的app id和app secret进行关联
 
-<img src='/diary/images/change.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/change.png)
+
+### 第五步：重启网关
 
 然后记得使用openclaw gateway restart 重启网关
 
 如果配置成功，在页面中的代理选项卡里面就会看到你创建的agent
 
-<img src='/diary/images/surr.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/surr.png)
+
+### 问题 1：飞书订阅方式报错
 
 如果你运气也和我一样不好，在飞书新建应用——设置订阅方式页面，就会看到如下图的报错
 
-<img src='/diary/images/error.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/error.png)
 
 报错的原因是：初始化出来的openclaw.json文件中，app id和app secret不知道为什么会被写入到channel最外层的这个对象里面
 
-<img src='/diary/images/error1.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/error1.png)
 
 因为我们现在是多个agent的情况，应该是以每个agent为一个单独的对象进行配置，所以我们修改成如下图所示
 
-<img src='/diary/images/error2.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/error2.png)
+
+### 问题 2：获取用户 ID
 
 如果不知道新建应用的用户id是什么，可以在飞书上随便发送一条信息，然后在如下图的日志有可以看到
 
-<img src='/diary/images/config.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/config.png)
+
+### 问题 3：绑定路由防串台
 
 还要注意的是，要给新建的agent单独绑定一个路由，要不会串台（比如你在飞书里面是以agentA窗口进行聊天，但是你发现对方的身份可能是agentB）
 
-<img src='/diary/images/router.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/router.png)
+
+### 最后：重启服务并验证
 
 然后再openclaw gateway restart重启下服务，再去到飞书应用的订阅方式那里点击保存，应该就不会上面的错误了
 
-<img src='/diary/images/baocun.png'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/baocun.png)
 
 新建agent成功，可以看到，新建出来的agent是一个全选的身份，有自己独立的工作空间和配置文件
 
 
-<img src='/diary/images/agentnew.jpg'  alt="斧头砍鱼" className="w-full h-auto" />
+![斧头砍鱼](/diary/images/agentnew.jpg)
 
