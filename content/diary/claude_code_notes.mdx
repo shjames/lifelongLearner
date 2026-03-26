@@ -31,3 +31,30 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.claude"
 
 /exit
 
+### 快速启动（跳过权限确认）
+
+claude --dangerously-skip-permissions
+
+### 在独立工作树中启动（并行任务互不干扰）
+claude --worktree
+### 或简写
+claude -w
+
+### @ 可以引用目录下的文件
+   
+   分析 @src/components/Button.tsx 的代码结构
+
+### ! 可以直接运行命令
+   
+   ! git status
+
+### 反斜杠换行
+   
+   \ + Enter
+
+### 压缩上下文
+   
+   / compact 
+
+###  语音模式
+    /voice 
