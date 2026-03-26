@@ -14,17 +14,20 @@ Anthropic：Claude Code的开发公司
 
 # 常用命令
 
-安装Claude 
+### 安装Claude 
 irm https://claude.ai/install.ps1 | iex
-卸载Claude ：
 
+### 卸载Claude ：
 
-### 删除可执行文件
+删除可执行文件
 Remove-Item -Force "$env:USERPROFILE\.local\bin\claude.exe"
-### 删除配置和数据（可选）
+删除配置和数据（可选）
 Remove-Item -Recurse -Force "$env:USERPROFILE\.claude"
 
 ### 永久添加用户环境变量
 [System.Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', 'sk-ant-api03-你的key', 'User')
 
+### 退出Claude Code
+
+/exit
 
