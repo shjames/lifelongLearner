@@ -14,19 +14,49 @@ Anthropic：Claude Code的开发公司
 
 # 常用命令
 
-安装Claude 
+### 安装Claude 
 irm https://claude.ai/install.ps1 | iex
 
+### 卸载Claude ：
 
-## 卸载Claude ：
-
-### 删除可执行文件
+删除可执行文件
 Remove-Item -Force "$env:USERPROFILE\.local\bin\claude.exe"
-### 删除配置和数据（可选）
+删除配置和数据（可选）
 Remove-Item -Recurse -Force "$env:USERPROFILE\.claude"
 
 ### 永久添加用户环境变量
 [System.Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', 'sk-n5ZTWr4YNaIyGtU9hYhvvnbWF8UhT1Sp2yAgV9VdxWmMwF5V', 'User')
 
+### 退出Claude Code
+
+/exit
+
+### 快速启动（跳过权限确认）
+
+claude --dangerously-skip-permissions
+
+### 在独立工作树中启动（并行任务互不干扰）
+claude --worktree
+### 或简写
+claude -w
+
+### @ 可以引用目录下的文件
+   
+   分析 @src/components/Button.tsx 的代码结构
+
+### ! 可以直接运行命令
+   
+   ! git status
+
+### 反斜杠换行
+   
+   \ + Enter
+
+### 压缩上下文
+   
+   / compact 
+
+###  语音模式
+    /voice 
 
 [System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', 'https://xingjiabiapi.org', 'User')
