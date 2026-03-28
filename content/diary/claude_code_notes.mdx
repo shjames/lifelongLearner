@@ -16,8 +16,9 @@ Anthropic：Claude Code的开发公司
 
 安装Claude 
 irm https://claude.ai/install.ps1 | iex
-卸载Claude ：
 
+
+## 卸载Claude ：
 
 ### 删除可执行文件
 Remove-Item -Force "$env:USERPROFILE\.local\bin\claude.exe"
@@ -25,6 +26,7 @@ Remove-Item -Force "$env:USERPROFILE\.local\bin\claude.exe"
 Remove-Item -Recurse -Force "$env:USERPROFILE\.claude"
 
 ### 永久添加用户环境变量
-[System.Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', 'sk-ant-api03-你的key', 'User')
+[System.Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', 'sk-n5ZTWr4YNaIyGtU9hYhvvnbWF8UhT1Sp2yAgV9VdxWmMwF5V', 'User')
 
 
+[System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', 'https://xingjiabiapi.org', 'User')
