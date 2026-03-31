@@ -1,0 +1,452 @@
+---
+title: 日记：2026/03/30
+tags:
+  - 日记
+  - 生活记录
+  - 日常思考
+summary: 天气阴，21℃，Tuesday
+category: diary
+---
+
+
+# pnpm run start-c 故障排除报告
+
+**日期：** 2026-03-31
+**分支：** dev-20260428-clusterc
+**项目：** kpay-crm-web
+**目标命令：** `pnpm run start-c`
+
+---
+
+## 概述
+
+`pnpm run start-c` 命令在执行过程中依次出现了四个独立问题，最终通过逐一修复后项目成功启动（webpack 编译完成耗时 17.67 分钟，服务运行在 http://localhost:8002）。
+
+---
+
+## 问题一：`ora` 模块缺失（npx kapi 缓存损坏）
+
+### 错误现象
+
+```
+node:internal/modules/cjs/loader:1423
+  throw err;
+  ^
+
+Error: Cannot find module 'ora'
+Require stack:
+- C:\Users\Administrator\AppData\Local\npm-cache\_npx\e0c8c354d173c2a9\node_modules\kapi\lib\cjs\krun.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1420:15)
+    ...
+    code: 'MODULE_NOT_FOUND'
+
+构建失败: Command failed: npx kcli kp:command-chain && npx kapi && npx umi dev
+```
+
+### 根本原因
+
+`pnpm run start-c` 对应 `package.json` 中的脚本为：
+
+```json
+"start-c": "node ./scripts/build.js --port=8002 --umi-env=start --react-app-env=devC --mode-env=local"
+```
+
+`scripts/build.js` 中构建命令链为：
+
+```javascript
+commands.push('npx kcli kp:command-chain');
+// ...
+commands.push('npx kapi');
+// ...
+commands.push(`npx ${buildCmd}`);
+const finalCommand = commands.join(' && ');
+```
+
+其中 `npx kapi` 使用的是 npx 全局缓存中的 `kapi` 包，缓存路径为：
+
+```
+C:\Users\Administrator\AppData\Local\npm-cache\_npx\e0c8c354d173c2a9\node_modules\kapi\
+```
+
+该缓存版本的 `kapi` 在 `krun.js` 中依赖了 `ora`，但 `ora` 并未被一同安装到该 npx 缓存目录下，导致运行时报 `MODULE_NOT_FOUND`。
+
+### 修复方案
+
+进入该 npx 缓存目录手动安装缺失的 `ora` 依赖：
+
+```bash
+cd "C:\Users\Administrator\AppData\Local\npm-cache\_npx\e0c8c354d173c2a9\node_modules"
+npm install ora
+```
+
+安装结果：
+
+```
+added 17 packages, and audited 297 packages in 6s
+```
+
+**注意：** 这是针对 npx 缓存的临时修复。根本原因是 `kapi` 包自身的依赖声明不完整，或 npx 缓存在某次异常下载后损坏。长期方案建议将 `kapi` 加入项目 `devDependencies` 并通过 `pnpm install` 管理。
+
+---
+
+## 问题二：pnpm store 大规模损坏
+
+### 错误现象
+
+```
+ ERR_PNPM_READ_FROM_STORE  Unexpected end of JSON input
+
+This error happened while installing the dependencies of @typescript-eslint/eslint-plugin@5.62.0
+```
+
+以及随后出现的：
+
+```
+ ERR_PNPM_READ_FROM_STORE  Unexpected token 'p', "pe: "uint2"... is not valid JSON
+
+This error happened while installing the dependencies of stylelint@15.11.0
+```
+
+### 根本原因
+
+pnpm 的内容寻址文件存储（Content-Addressable File System, CAFS）位于 `D:\.pnpm-store\v10\`，其目录结构为：
+
+```
+D:\.pnpm-store\v10\
+├── files\     # 按内容哈希存储的实际文件内容（gzip/raw）
+└── index\     # 每个包的元数据索引 JSON 文件
+```
+
+经检查，store 中存在两类损坏：
+
+**类型一：零字节文件（empty files）**
+
+```javascript
+// find_corrupted.js 扫描结果
+Found 18066 zero-byte files
+D:\.pnpm-store\v10\files\00\00cc06fe80fe136b07a2bcc0829446f5...
+D:\.pnpm-store\v10\files\00\053131bc046ebe2792484232840eceb7...
+// ... 共 18066 个
+```
+
+**类型二：内容损坏的非空文件**
+
+部分 `files/` 目录下的文件虽然非空，但内容为截断的二进制数据（如 `pe: "uint2"...` 实为 `type: "uint2"...` 被截断的 CAFS 格式头部），pnpm 在读取时尝试 JSON 解析失败。
+
+这种大规模损坏通常由以下原因引起：
+- 磁盘写入中断（如断电、系统崩溃）
+- 存储介质出现坏块
+- 网络中断导致下载写入不完整后未正确回滚
+
+### 修复过程
+
+**步骤 1：尝试删除零字节文件**
+
+编写 `C:/Users/Administrator/fix_store.js`：
+
+```javascript
+const fs = require('fs');
+const path = require('path');
+
+function walkAndDelete(dir) {
+  let deleted = 0;
+  try {
+    const entries = fs.readdirSync(dir, {withFileTypes: true});
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        deleted += walkAndDelete(full);
+      } else if (e.isFile()) {
+        const stat = fs.statSync(full);
+        if (stat.size === 0) {
+          fs.unlinkSync(full);
+          deleted++;
+        }
+      }
+    }
+  } catch(err) {}
+  return deleted;
+}
+
+const storeFiles = 'D:\\.pnpm-store\\v10\\files';
+const storeIndex = 'D:\\.pnpm-store\\v10\\index';
+let total = 0;
+total += walkAndDelete(storeFiles);
+total += walkAndDelete(storeIndex);
+console.log('Deleted ' + total + ' zero-byte files');
+```
+
+执行结果：`Deleted 18066 zero-byte files`
+
+**步骤 2：验证 index JSON 文件完整性**
+
+编写 `C:/Users/Administrator/fix_index.js`：
+
+```javascript
+const fs = require('fs');
+const path = require('path');
+
+function walkAndFixIndex(dir) {
+  let deleted = 0;
+  try {
+    const entries = fs.readdirSync(dir, {withFileTypes: true});
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        deleted += walkAndFixIndex(full);
+      } else if (e.isFile() && e.name.endsWith('.json')) {
+        try {
+          const content = fs.readFileSync(full, 'utf8');
+          JSON.parse(content);  // 尝试解析，失败则删除
+        } catch(err) {
+          fs.unlinkSync(full);
+          deleted++;
+        }
+      }
+    }
+  } catch(err) {}
+  return deleted;
+}
+
+const total = walkAndFixIndex('D:\\.pnpm-store\\v10\\index');
+console.log('Deleted ' + total + ' corrupted JSON index files');
+```
+
+执行结果：`Deleted 0 corrupted JSON index files`（index 文件完好，损坏集中在 files 目录）
+
+**步骤 3：删除零字节文件后再次 pnpm install 仍失败**
+
+发现 `files/` 目录中存在第二类损坏（内容截断但非空），`--force` 参数无法跳过 store 读取。
+
+**步骤 4：彻底清空 pnpm store**
+
+编写 `C:/Users/Administrator/clear_store.js`：
+
+```javascript
+const fs = require('fs');
+const path = require('path');
+
+function deleteDir(dir) {
+  let count = 0;
+  try {
+    const entries = fs.readdirSync(dir, {withFileTypes: true});
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        count += deleteDir(full);
+        try { fs.rmdirSync(full); } catch(e) {}
+      } else if (e.isFile()) {
+        fs.unlinkSync(full);
+        count++;
+      }
+    }
+  } catch(err) {}
+  return count;
+}
+
+let count = deleteDir('D:\\.pnpm-store\\v10\\files');
+console.log('Deleted ' + count + ' files from files/');
+count = deleteDir('D:\\.pnpm-store\\v10\\index');
+console.log('Deleted ' + count + ' files from index/');
+```
+
+执行结果：
+
+```
+Deleted 182767 files from files/
+Deleted 6028 files from index/
+Done. pnpm store cleared.
+```
+
+**步骤 5：重新执行 pnpm install**
+
+由于 store 完全清空，所有 2343 个包需要从私有仓库重新下载：
+
+```
+https://nexuscdn.kpay-group.com/repository/kpay-npm-group/
+```
+
+网络较慢（每个请求约 10-20 秒），总计耗时约 **11 分钟 11 秒**：
+
+```
+Progress: resolved 2344, reused 0, downloaded 2343, added 2374, done
+Done in 11m 11.1s using pnpm v10.33.0
+```
+
+同时 postinstall 脚本自动执行 `umi g tmp` 生成临时文件。
+
+### 注意事项
+
+- pnpm store 损坏会影响所有使用该 store 的项目（store 是全局共享的）
+- 清空 store 后首次 `pnpm install` 需要完整下载所有包，后续安装会复用 store 恢复正常速度
+- 若再次出现该问题，建议执行 `pnpm store prune` 先尝试清理，再运行 `pnpm install`
+
+---
+
+## 问题三：kapi 无法连接 YAPI 服务器
+
+### 错误现象
+
+```
+√ 找到配置文件: D:\project\kpay\kpay-crm-web\kapi.config.ts
+- 正在获取数据并生成代码...
+
+ ERROR  request to https://yapi.kpay-group.com/api/project/get?token=cd7b29fde...
+        failed, reason: Client network socket disconnected before secure TLS
+        connection was established
+
+构建失败: Command failed: npx kcli kp:command-chain && npx kapi && npx umi dev
+```
+
+### 根本原因
+
+`kapi.config.ts` 配置如下：
+
+```typescript
+export default {
+  serverUrl: 'https://yapi.kpay-group.com',  // 公司内网 YAPI 服务器
+  projects: [
+    {
+      token: process.env.ORIGIN_YAPI_TOKEN,   // cd7b29fde810dd20...
+      categories: [{ id: 0 }],
+      apiPrefix: 'origin',
+    },
+    {
+      token: process.env.KBANK_YAPI_TOKEN,    // 5407259b453be5a9...
+      apiPrefix: 'kbank',
+    },
+    {
+      token: process.env.DATA_YAPI_TOKEN,     // d8956cab1fc7e568...
+      apiPrefix: 'data',
+    },
+  ],
+};
+```
+
+`yapi.kpay-group.com` 是公司内部 YAPI 接口管理平台，TLS 握手在建立前就被断开，说明该服务器在当前网络环境下不可达（可能需要 VPN 或在公司内网环境下运行）。
+
+### 修复方案
+
+**关键发现：** `scripts/build.js` 中提供了跳过 kapi 的机制：
+
+```javascript
+// scripts/build.js 第 123-126 行
+if (!argObj['NO_KAPI']) {
+  process_env.JEST_WORKER_ID = 'true';
+  commands.push('npx kapi');
+}
+```
+
+当传入 `--no-kapi=true` 参数时，`getCliArgs()` 函数解析后得到 `argObj['NO_KAPI'] = 'true'`，条件不满足，kapi 步骤被跳过。
+
+同时确认 kapi 之前已成功生成过 API 文件，文件存在且完整：
+
+```
+src/services/api/
+├── data.ts       # DATA_YAPI_TOKEN 对应接口
+├── index.ts      # 统一导出
+├── kbank.ts      # KBANK_YAPI_TOKEN 对应接口
+├── kpay-utils.ts # 工具类
+└── origin.ts     # ORIGIN_YAPI_TOKEN 对应接口
+```
+
+因此改用以下命令直接绕过 kapi 步骤启动：
+
+```bash
+node ./scripts/build.js --port=8002 --umi-env=start --react-app-env=devC --mode-env=local --no-kapi=true
+```
+
+执行后命令链变为（省略了 kapi）：
+
+```
+commands: npx kcli kp:command-chain && npx umi dev
+```
+
+### 长期建议
+
+- 在无法连接 YAPI 的环境（如 Home Office、不在公司 VPN 下）启动项目时，均需加 `--no-kapi=true` 参数
+- 建议在 `package.json` 中增加一个专用脚本：
+  ```json
+  "start-c-local": "node ./scripts/build.js --port=8002 --umi-env=start --react-app-env=devC --mode-env=local --no-kapi=true"
+  ```
+- kapi 生成的文件（`src/services/api/`）应纳入 git 版本管理，这样无网络时也能正常使用
+
+---
+
+## 问题四：首次 webpack 编译耗时较长
+
+### 现象
+
+依赖安装完成后，`npx umi dev` 启动 webpack 编译，输出：
+
+```
+Bundle with webpack 5...
+Starting the development server...
+i Compiling Webpack
+[BABEL] Note: The code generator has deoptimised the styling of
+        D:\project\kpay\kpay-crm-web\node_modules\.pnpm\@antv+g-lite@2.7.0\
+        node_modules\@antv\g-lite\dist\index.esm.js as it exceeds the max of 500KB.
+```
+
+### 原因分析
+
+- **首次编译无缓存：** `node_modules/.cache/` 目录为空（node_modules 刚全量重装），webpack 需要从零开始构建所有模块的依赖图
+- **Babel 处理大文件：** `@antv/g-lite` 的 ESM 文件超过 500KB，Babel 触发降级处理（deoptimised styling）
+- **项目规模：** kpay-crm-web 为大型 CRM 项目，包含大量子模块和路由
+
+### 结果
+
+```
+√ Webpack: Compiled successfully in 17.67m
+ WARNING  Compiled with 0 warnings  09:44:59
+
+  App running at:
+  - Local:   http://localhost:8002 (copied to clipboard)
+  - Network: http://198.18.0.1:8002
+```
+
+编译成功，0 警告，项目正常运行于 **http://localhost:8002**。
+
+后续启动由于有 webpack 缓存，编译时间将大幅缩短（通常 1-3 分钟）。
+
+---
+
+## 完整修复时间线
+
+| 时间节点 | 操作 | 结果 |
+|---------|------|------|
+| T+0 | 运行 `pnpm run start-c` | 失败：ora 模块缺失 |
+| T+1 | 安装 ora 到 npx 缓存 | 修复问题一 |
+| T+2 | 再次运行，pnpm install | 失败：ERR_PNPM_READ_FROM_STORE |
+| T+3 | 删除 18066 个零字节 store 文件 | 部分修复 |
+| T+4 | 再次 pnpm install | 仍失败：内容损坏的非空文件 |
+| T+5 | 彻底清空 pnpm store（182767文件） | 修复问题二 |
+| T+6 | pnpm install 重新下载全部依赖 | 耗时 11m11s，成功 |
+| T+7 | 运行 start-c | 失败：YAPI TLS 连接中断 |
+| T+8 | 改用 --no-kapi=true 跳过 kapi | 修复问题三 |
+| T+9 | webpack 首次编译 | 耗时 17.67m，成功 |
+| **完成** | **http://localhost:8002 正常访问** | ✅ |
+
+---
+
+## 辅助脚本清单
+
+修复过程中创建的临时脚本（位于 `C:/Users/Administrator/`）：
+
+| 文件名 | 用途 |
+|--------|------|
+| `find_corrupted.js` | 扫描 pnpm store 中的零字节文件并列出 |
+| `fix_store.js` | 删除 files/ 和 index/ 中的零字节文件 |
+| `fix_index.js` | 检查并删除 index/ 中无法 JSON.parse 的损坏文件 |
+| `clear_store.js` | 彻底清空 pnpm store 的 files/ 和 index/ 目录 |
+
+这些脚本可保留备用，下次遇到 pnpm store 损坏时直接使用。
+
+---
+
+## 预防建议
+
+1. **pnpm store 定期健康检查：** 定期执行 `pnpm store prune` 清理孤立包
+2. **备用启动脚本：** 在 `package.json` 中增加 `start-c-local`（含 `--no-kapi=true`），用于无法访问 YAPI 的场景
+3. **API 文件版本管理：** 确保 `src/services/api/` 目录已提交到 git，避免因 kapi 不可用导致无法启动
+4. **磁盘健康：** store 大规模损坏可能与磁盘有关，建议定期检查 D 盘磁盘健康状态（`chkdsk D:`）
