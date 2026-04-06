@@ -1,0 +1,7 @@
+{
+  "defaultTheme": "random",
+  "defaultSize": "portrait",
+  "defaultOutputDir": "output/quote-card",
+  "supportedThemes": ["minimal", "literary", "retro", "dark", "oriental", "magazine", "random"],
+  "supportedSizes": ["portrait", "square", "landscape"]
+}
