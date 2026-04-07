@@ -15,5 +15,5 @@ allowed-tools:
 
 ## 任务
 
-根据用户提供的文案$ARGUMENTS，调用quote-card-poster技能生成内容。
+根据用户提供的文案$ARGUMENTS，调用quote-card-poster技能生成内容，同时导出png图片。
 

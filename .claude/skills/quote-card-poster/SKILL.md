@@ -160,8 +160,8 @@ allowed-tools: Read,Write,Edit,MultiEdit,Bash,Glob,Grep
 - 不要假装已经生成成功
 
 常见修复：
-- `npm install`
-- `npx playwright install chromium`
+- `npm install puppeteer-core --registry https://registry.npmmirror.com`
+- 确保系统已安装 Google Chrome 或 Microsoft Edge（render_png.js 自动检测路径）
 
 ## 九、优先级
 
