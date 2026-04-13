@@ -61,11 +61,37 @@ function slugify(s) {
     .slice(0, 60) || 'quote-card';
 }
 
+function parseMarkdown(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let quote = '';
+  let source = '';
+  let author = '';
+  for (const line of lines) {
+    if (/^#{1,3}\s+/.test(line)) {
+      quote = line.replace(/^#{1,3}\s+/, '').trim();
+    } else if (/^出自[：:]/.test(line)) {
+      source = line.replace(/^出自[：:]/, '').trim();
+    } else if (/^作者[：:]/.test(line)) {
+      author = line.replace(/^作者[：:]/, '').trim();
+    }
+  }
+  return { quote, source, author };
+}
+
 (async () => {
   const args = parseArgs(process.argv);
   if (!args.input) { console.error('Missing --input <json file>'); process.exit(1); }
 
   const data = JSON.parse(fs.readFileSync(args.input, 'utf8'));
+
+  // Resolve quote/source from markdown if needed
+  if (data.markdown) {
+    const parsed = parseMarkdown(data.markdown);
+    if (!data.quote && parsed.quote) data.quote = parsed.quote;
+    if (!data.source && parsed.source) data.source = parsed.source;
+    if (!data.author && parsed.author) data.author = parsed.author;
+  }
+
   const outDir = path.resolve(process.cwd(), data.outputDir || 'output/quote-card');
 
   // 找到本次生成的 summary.json

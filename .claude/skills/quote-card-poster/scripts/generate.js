@@ -42,9 +42,37 @@ function e(s) {
     .replace(/"/g, '&quot;');
 }
 
+/**
+ * Parse markdown format into card fields.
+ * ## Heading     → quote (title)
+ * 出自：text     → source
+ * 作者：text     → author
+ * Other lines    → body paragraph
+ */
+function parseMarkdown(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let quote = '';
+  let source = '';
+  let author = '';
+  const bodyLines = [];
+
+  for (const line of lines) {
+    if (/^#{1,3}\s+/.test(line)) {
+      quote = line.replace(/^#{1,3}\s+/, '').trim();
+    } else if (/^出自[：:]/.test(line)) {
+      source = line.replace(/^出自[：:]/, '').trim();
+    } else if (/^作者[：:]/.test(line)) {
+      author = line.replace(/^作者[：:]/, '').trim();
+    } else {
+      bodyLines.push(line);
+    }
+  }
+
+  return { quote, body: bodyLines.join('\n').trim(), source, author };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // COMMON WRAPPER — handles PC/mobile scaling via transform: scale()
-// Each theme renderer returns { css, body } and calls wrapCard()
 // ─────────────────────────────────────────────────────────────────────────────
 
 function wrapCard(cardCSS, cardBody, W, H) {
@@ -103,13 +131,16 @@ ${cardBody}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THEME RENDERERS
+// Each renderer checks data.body: if present, quote = title + body paragraph
 // ─────────────────────────────────────────────────────────────────────────────
 
 function renderMinimal(data, W, H) {
   const isLand = W > H;
+  const hasBody = !!data.body;
   const px = isLand ? 100 : 80;
   const py = isLand ? 90 : 110;
-  const qSize = W > H ? 52 : 60;
+  const qSize = hasBody ? (isLand ? 36 : 40) : (isLand ? 52 : 60);
+  const bodySize = isLand ? 20 : 23;
 
   const css = `
 .card{
@@ -130,19 +161,25 @@ function renderMinimal(data, W, H) {
 .label{
   font-size:13px;letter-spacing:.4em;color:#999;text-transform:uppercase;
   font-family:-apple-system,"Helvetica Neue",sans-serif;font-weight:300;
-  margin-bottom:52px;
+  margin-bottom:${hasBody?36:52}px;
 }
 .open-quote{
-  font-size:${qSize * 2.8}px;line-height:.7;color:#ccc;
+  font-size:${hasBody ? qSize*1.8 : qSize*2.8}px;line-height:.7;color:#ccc;
   font-family:Georgia,serif;margin-bottom:8px;user-select:none;
 }
 .quote{
-  font-size:${qSize}px;line-height:1.75;font-weight:400;
+  font-size:${qSize}px;line-height:${hasBody?1.55:1.75};
+  font-weight:${hasBody?600:400};
   letter-spacing:.06em;color:#1a1a1a;white-space:pre-wrap;
+  ${hasBody?'padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid #ddd;':''}
+}
+.body-text{
+  font-size:${bodySize}px;line-height:1.85;font-weight:400;
+  letter-spacing:.04em;color:#555;white-space:pre-wrap;
 }
 .divider{
   width:${W > H ? 80 : 60}px;height:1px;background:#ccc;
-  margin:52px 0 32px;
+  margin:${hasBody?32:52}px 0 ${hasBody?20:32}px;
 }
 .bottom{display:flex;flex-direction:column;gap:10px}
 .source{font-size:22px;font-weight:300;color:#555;letter-spacing:.05em}
@@ -158,6 +195,7 @@ function renderMinimal(data, W, H) {
       <div class="label">Quote</div>
       <div class="open-quote">"</div>
       <div class="quote">${e(data.quote)}</div>
+      ${hasBody ? `<div class="body-text">${e(data.body)}</div>` : ''}
       <div class="divider"></div>
       <div class="bottom">
         ${data.source ? `<div class="source">《${e(data.source)}》</div>` : ''}
@@ -171,9 +209,11 @@ function renderMinimal(data, W, H) {
 
 function renderLiterary(data, W, H) {
   const isLand = W > H;
+  const hasBody = !!data.body;
   const px = isLand ? 110 : 90;
   const py = isLand ? 90 : 120;
-  const qSize = isLand ? 48 : 54;
+  const qSize = hasBody ? (isLand ? 34 : 38) : (isLand ? 48 : 54);
+  const bodySize = isLand ? 20 : 23;
 
   const css = `
 .card{
@@ -196,7 +236,7 @@ function renderLiterary(data, W, H) {
   top:${py - 30}px;left:${px}px;right:${px}px;height:1px;
   background:linear-gradient(90deg,transparent,rgba(140,100,40,.35),transparent);
 }
-.header{display:flex;align-items:center;gap:16px;margin-bottom:${isLand?40:60}px}
+.header{display:flex;align-items:center;gap:16px;margin-bottom:${isLand?36:50}px}
 .header-line{flex:1;height:1px;background:rgba(140,100,40,.25)}
 .header-text{
   font-size:13px;letter-spacing:.35em;color:#a08050;text-transform:uppercase;
@@ -204,17 +244,23 @@ function renderLiterary(data, W, H) {
 }
 .body{flex:1;display:flex;flex-direction:column;justify-content:center}
 .big-quote{
-  font-size:${qSize*3.2}px;line-height:.6;color:rgba(140,100,40,.22);
+  font-size:${hasBody ? qSize*2.2 : qSize*3.2}px;line-height:.6;color:rgba(140,100,40,.22);
   font-family:"Times New Roman",Georgia,serif;
-  margin-bottom:${isLand?12:20}px;user-select:none;
+  margin-bottom:${isLand?10:16}px;user-select:none;
 }
 .quote{
-  font-size:${qSize}px;line-height:1.85;font-weight:400;
+  font-size:${qSize}px;line-height:${hasBody?1.55:1.85};
+  font-weight:${hasBody?600:400};
   letter-spacing:.05em;color:#2c2016;white-space:pre-wrap;
+  ${hasBody?'padding-bottom:18px;margin-bottom:16px;border-bottom:1px solid rgba(140,100,40,.3);':''}
+}
+.body-text{
+  font-size:${bodySize}px;line-height:1.9;font-weight:400;
+  letter-spacing:.04em;color:#4a3a28;white-space:pre-wrap;
 }
 .footer{display:flex;flex-direction:column;gap:12px}
 .deco-line{
-  width:50px;height:2px;margin-bottom:${isLand?24:32}px;
+  width:50px;height:2px;margin-bottom:${isLand?20:28}px;
   background:linear-gradient(90deg,rgba(140,100,40,.6),rgba(140,100,40,.1));
 }
 .source{font-size:${isLand?22:25}px;color:#6b4f28;letter-spacing:.06em;font-weight:400;}
@@ -233,6 +279,7 @@ function renderLiterary(data, W, H) {
     <div class="body">
       <div class="big-quote">"</div>
       <div class="quote">${e(data.quote)}</div>
+      ${hasBody ? `<div class="body-text">${e(data.body)}</div>` : ''}
     </div>
     <div class="footer">
       <div class="deco-line"></div>
@@ -246,9 +293,11 @@ function renderLiterary(data, W, H) {
 
 function renderRetro(data, W, H) {
   const isLand = W > H;
+  const hasBody = !!data.body;
   const px = isLand ? 100 : 82;
   const py = isLand ? 80 : 100;
-  const qSize = isLand ? 46 : 52;
+  const qSize = hasBody ? (isLand ? 34 : 38) : (isLand ? 46 : 52);
+  const bodySize = isLand ? 19 : 22;
 
   const css = `
 .card{
@@ -266,7 +315,7 @@ function renderRetro(data, W, H) {
 }
 .frame-outer{position:absolute;top:28px;left:28px;right:28px;bottom:28px;border:2px solid rgba(80,50,20,.4);}
 .frame-inner{position:absolute;top:38px;left:38px;right:38px;bottom:38px;border:1px solid rgba(80,50,20,.2);}
-.stamp-bar{display:flex;align-items:center;gap:0;margin-bottom:${isLand?36:52}px;margin-top:16px;}
+.stamp-bar{display:flex;align-items:center;gap:0;margin-bottom:${isLand?28:40}px;margin-top:16px;}
 .stamp-line{flex:1;height:2px;background:rgba(80,50,20,.35)}
 .stamp-center{
   padding:10px 28px;border:2px solid rgba(80,50,20,.4);
@@ -276,15 +325,21 @@ function renderRetro(data, W, H) {
 }
 .body{flex:1;display:flex;flex-direction:column;justify-content:center}
 .ornament{
-  font-size:${qSize*2.5}px;line-height:.65;color:rgba(100,65,25,.25);
+  font-size:${hasBody ? qSize*1.8 : qSize*2.5}px;line-height:.65;color:rgba(100,65,25,.25);
   font-family:Georgia,serif;margin-bottom:10px;user-select:none;
 }
 .quote{
-  font-size:${qSize}px;line-height:1.82;font-weight:400;
+  font-size:${qSize}px;line-height:${hasBody?1.55:1.82};
+  font-weight:${hasBody?600:400};
   letter-spacing:.04em;color:#2a1e0e;white-space:pre-wrap;
+  ${hasBody?'padding-bottom:16px;margin-bottom:14px;border-bottom:1px solid rgba(80,50,20,.3);':''}
+}
+.body-text{
+  font-size:${bodySize}px;line-height:1.88;font-weight:400;
+  letter-spacing:.04em;color:#3a2a14;white-space:pre-wrap;
 }
 .rule{
-  width:100%;height:2px;margin:${isLand?28:40}px 0 24px;
+  width:100%;height:2px;margin:${hasBody?20:28}px 0 ${hasBody?16:24}px;
   background:repeating-linear-gradient(90deg,
     rgba(80,50,20,.4) 0,rgba(80,50,20,.4) 6px,transparent 6px,transparent 10px);
 }
@@ -312,6 +367,7 @@ function renderRetro(data, W, H) {
     <div class="body">
       <div class="ornament">"</div>
       <div class="quote">${e(data.quote)}</div>
+      ${hasBody ? `<div class="body-text">${e(data.body)}</div>` : ''}
     </div>
     <div class="rule"></div>
     <div class="meta">
@@ -324,9 +380,11 @@ function renderRetro(data, W, H) {
 
 function renderDark(data, W, H) {
   const isLand = W > H;
+  const hasBody = !!data.body;
   const px = isLand ? 108 : 88;
   const py = isLand ? 88 : 110;
-  const qSize = isLand ? 50 : 56;
+  const qSize = hasBody ? (isLand ? 36 : 40) : (isLand ? 50 : 56);
+  const bodySize = isLand ? 20 : 23;
   const gold = '#c9a84c';
   const goldLight = '#e8cc80';
 
@@ -364,17 +422,23 @@ function renderDark(data, W, H) {
 }
 .body{flex:1;display:flex;flex-direction:column;justify-content:center;margin-top:${isLand?-20:-30}px}
 .big-quote{
-  font-size:${qSize*3}px;line-height:.55;
+  font-size:${hasBody ? qSize*2.2 : qSize*3}px;line-height:.55;
   background:linear-gradient(135deg,${goldLight},${gold},rgba(201,168,76,.3));
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-  font-family:Georgia,serif;margin-bottom:${isLand?14:22}px;user-select:none;
+  font-family:Georgia,serif;margin-bottom:${isLand?12:18}px;user-select:none;
 }
 .quote{
-  font-size:${qSize}px;line-height:1.8;font-weight:400;
+  font-size:${qSize}px;line-height:${hasBody?1.55:1.8};
+  font-weight:${hasBody?600:400};
   letter-spacing:.04em;color:#e8e2d4;white-space:pre-wrap;
+  ${hasBody?`padding-bottom:16px;margin-bottom:14px;border-bottom:1px solid rgba(201,168,76,.25);`:''}
+}
+.body-text{
+  font-size:${bodySize}px;line-height:1.88;font-weight:400;
+  letter-spacing:.04em;color:#b8b0a0;white-space:pre-wrap;
 }
 .footer{display:flex;flex-direction:column;gap:0}
-.gold-rule{width:56px;height:1px;margin-bottom:28px;background:linear-gradient(90deg,${gold},transparent);}
+.gold-rule{width:56px;height:1px;margin-bottom:${hasBody?20:28}px;background:linear-gradient(90deg,${gold},transparent);}
 .source{font-size:${isLand?22:25}px;color:${gold};letter-spacing:.06em;margin-bottom:12px;font-weight:300;}
 .author{font-size:${isLand?18:21}px;color:rgba(201,168,76,.55);letter-spacing:.12em;font-family:-apple-system,sans-serif;font-weight:300;}
 .corner-gem{display:none}`;
@@ -390,6 +454,7 @@ function renderDark(data, W, H) {
     <div class="body">
       <div class="big-quote">"</div>
       <div class="quote">${e(data.quote)}</div>
+      ${hasBody ? `<div class="body-text">${e(data.body)}</div>` : ''}
     </div>
     <div class="footer">
       <div class="gold-rule"></div>
@@ -403,9 +468,11 @@ function renderDark(data, W, H) {
 
 function renderOriental(data, W, H) {
   const isLand = W > H;
+  const hasBody = !!data.body;
   const px = isLand ? 108 : 88;
   const py = isLand ? 88 : 110;
-  const qSize = isLand ? 46 : 52;
+  const qSize = hasBody ? (isLand ? 32 : 36) : (isLand ? 46 : 52);
+  const bodySize = isLand ? 19 : 22;
   const red = '#8b1a1a';
   const redLight = '#c0392b';
   const ink = '#1a1007';
@@ -435,15 +502,24 @@ function renderOriental(data, W, H) {
   flex:1;padding:${py}px ${isLand?px:px+20}px ${py}px ${isLand?px:px+24}px;
   display:flex;flex-direction:column;justify-content:space-between;
 }
-.header{margin-bottom:${isLand?36:52}px}
+.header{margin-bottom:${isLand?28:40}px}
 .chapter-num{display:inline-flex;align-items:center;gap:14px;}
 .red-dash{width:${isLand?32:24}px;height:2px;background:${red}}
 .chapter-label{font-size:13px;letter-spacing:.45em;color:${red};text-transform:uppercase;font-family:-apple-system,sans-serif;font-weight:400;}
 .body{flex:1;display:flex;flex-direction:column;justify-content:center}
-.quote-mark-top{font-size:${qSize*1.8}px;line-height:1;color:rgba(139,26,26,.18);font-family:Georgia,serif;margin-bottom:${isLand?10:16}px;user-select:none;}
-.quote{font-size:${qSize}px;line-height:1.88;font-weight:400;letter-spacing:.06em;color:${ink};white-space:pre-wrap;}
-.footer-area{margin-top:${isLand?28:44}px}
-.ink-line{width:100%;height:1px;margin-bottom:${isLand?20:28}px;background:linear-gradient(90deg,${red},rgba(139,26,26,.08));}
+.quote-mark-top{font-size:${hasBody?qSize*1.5:qSize*1.8}px;line-height:1;color:rgba(139,26,26,.18);font-family:Georgia,serif;margin-bottom:${isLand?8:12}px;user-select:none;}
+.quote{
+  font-size:${qSize}px;line-height:${hasBody?1.55:1.88};
+  font-weight:${hasBody?600:400};
+  letter-spacing:.06em;color:${ink};white-space:pre-wrap;
+  ${hasBody?'padding-bottom:16px;margin-bottom:14px;border-bottom:1px solid rgba(139,26,26,.2);':''}
+}
+.body-text{
+  font-size:${bodySize}px;line-height:1.9;font-weight:400;
+  letter-spacing:.04em;color:#3a2818;white-space:pre-wrap;
+}
+.footer-area{margin-top:${isLand?20:32}px}
+.ink-line{width:100%;height:1px;margin-bottom:${isLand?16:22}px;background:linear-gradient(90deg,${red},rgba(139,26,26,.08));}
 .source{font-size:${isLand?22:25}px;color:#4a2010;letter-spacing:.06em;margin-bottom:10px;}
 .author{font-size:${isLand?18:21}px;color:#6b3820;letter-spacing:.1em;font-family:-apple-system,sans-serif;font-weight:300;}
 .vert-deco{
@@ -469,6 +545,7 @@ function renderOriental(data, W, H) {
       <div class="body">
         <div class="quote-mark-top">❝</div>
         <div class="quote">${e(data.quote)}</div>
+        ${hasBody ? `<div class="body-text">${e(data.body)}</div>` : ''}
       </div>
       <div class="footer-area">
         <div class="ink-line"></div>
@@ -482,9 +559,11 @@ function renderOriental(data, W, H) {
 
 function renderMagazine(data, W, H) {
   const isLand = W > H;
+  const hasBody = !!data.body;
   const px = isLand ? 100 : 80;
   const py = isLand ? 80 : 100;
-  const qSize = isLand ? 62 : 68;
+  const qSize = hasBody ? (isLand ? 44 : 50) : (isLand ? 62 : 68);
+  const bodySize = isLand ? 21 : 24;
   const accent = '#e63333';
   const topH = isLand ? 100 : 120;
 
@@ -502,19 +581,25 @@ function renderMagazine(data, W, H) {
 .top-block::before{content:'';position:absolute;left:0;top:0;bottom:0;width:10px;background:${accent};}
 .mag-title{font-size:14px;letter-spacing:.6em;color:#fff;text-transform:uppercase;font-weight:700;}
 .issue{margin-left:auto;font-size:13px;letter-spacing:.2em;color:rgba(255,255,255,.45);font-weight:300;}
-.body{flex:1;padding:${isLand?52:70}px ${px}px;display:flex;flex-direction:column;justify-content:space-between;}
+.body{flex:1;padding:${isLand?44:60}px ${px}px;display:flex;flex-direction:column;justify-content:space-between;}
 .giant-quote{
-  font-size:${qSize*4.5}px;line-height:.65;color:rgba(0,0,0,.06);
+  font-size:${(hasBody?qSize*3:qSize*4.5)}px;line-height:.65;color:rgba(0,0,0,.06);
   font-family:"Times New Roman",Georgia,serif;
   position:absolute;top:${topH}px;left:${px - 20}px;
   user-select:none;pointer-events:none;font-weight:900;
 }
 .quote-area{flex:1;display:flex;flex-direction:column;justify-content:center;position:relative;z-index:1}
-.accent-bar{width:${isLand?5:6}px;height:${isLand?64:80}px;background:${accent};margin-bottom:32px;}
+.accent-bar{width:${isLand?5:6}px;height:${isLand?56:68}px;background:${accent};margin-bottom:${hasBody?20:32}px;}
 .quote{
-  font-size:${qSize}px;line-height:1.4;font-weight:800;
+  font-size:${qSize}px;line-height:${hasBody?1.4:1.4};
+  font-weight:800;
   letter-spacing:-.01em;color:#0f0f0f;white-space:pre-wrap;
   font-family:-apple-system,"Helvetica Neue",sans-serif;
+  ${hasBody?'margin-bottom:20px;padding-bottom:18px;border-bottom:2px solid #ddd;':''}
+}
+.body-text{
+  font-size:${bodySize}px;line-height:1.85;font-weight:400;
+  letter-spacing:.01em;color:#444;white-space:pre-wrap;
 }
 .meta-block{
   border-top:3px solid #0f0f0f;padding-top:24px;
@@ -541,6 +626,7 @@ function renderMagazine(data, W, H) {
       <div class="quote-area">
         <div class="accent-bar"></div>
         <div class="quote">${e(data.quote)}</div>
+        ${hasBody ? `<div class="body-text">${e(data.body)}</div>` : ''}
       </div>
       <div class="meta-block">
         ${data.source ? `<div>
@@ -572,9 +658,45 @@ const THEMES = {
   magazine: { name: 'magazine', render: renderMagazine }
 };
 
-function pickTheme(theme) {
+// djb2 hash — deterministic, spreads well across 6 buckets
+function hashString(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = (((h << 5) + h) ^ s.charCodeAt(i)) >>> 0;
+  }
+  return h;
+}
+
+const THEME_HISTORY_PATH = path.join(process.cwd(), 'output/quote-card/.theme-history.json');
+
+function loadLastTheme() {
+  try { return JSON.parse(fs.readFileSync(THEME_HISTORY_PATH, 'utf8')).last || ''; }
+  catch { return ''; }
+}
+
+function saveLastTheme(name) {
+  try { fs.writeFileSync(THEME_HISTORY_PATH, JSON.stringify({ last: name }), 'utf8'); }
+  catch {}
+}
+
+/**
+ * Random theme selection strategy:
+ * 1. Hash the quote/body content → deterministic base index (different text → different theme)
+ * 2. If result equals last-used theme, shift to the next index (no consecutive repeats)
+ */
+function pickTheme(theme, data) {
   const keys = Object.keys(THEMES);
-  if (!theme || theme === 'random') return THEMES[keys[Math.floor(Math.random() * keys.length)]];
+  if (!theme || theme === 'random') {
+    const content = (data && (data.quote || data.markdown || data.body || '')) + '';
+    let idx = hashString(content) % keys.length;
+    const last = loadLastTheme();
+    if (last && keys[idx] === last && keys.length > 1) {
+      idx = (idx + 1) % keys.length;
+    }
+    const chosen = THEMES[keys[idx]];
+    saveLastTheme(keys[idx]);
+    return chosen;
+  }
   return THEMES[theme] || THEMES.minimal;
 }
 
@@ -589,7 +711,17 @@ function main() {
 
   const raw = fs.readFileSync(inputPath, 'utf8');
   const data = JSON.parse(raw);
-  if (!data.quote) { console.error('Input must include "quote"'); process.exit(1); }
+
+  // Support markdown field: parse ## heading, body, 出自：
+  if (data.markdown) {
+    const parsed = parseMarkdown(data.markdown);
+    if (!data.quote && parsed.quote) data.quote = parsed.quote;
+    if (!data.body  && parsed.body)  data.body  = parsed.body;
+    if (!data.source && parsed.source) data.source = parsed.source;
+    if (!data.author && parsed.author) data.author = parsed.author;
+  }
+
+  if (!data.quote) { console.error('Input must include "quote" or "markdown" with ## heading'); process.exit(1); }
 
   const outDir = path.resolve(process.cwd(), data.outputDir || 'output/quote-card');
   ensureDir(outDir);
@@ -601,7 +733,7 @@ function main() {
   const results = [];
 
   for (const theme of themes) {
-    const themeObj = pickTheme(theme);
+    const themeObj = pickTheme(theme, data);
     const suffix = themes.length > 1 ? `-${themeObj.name}` : '';
     const html = themeObj.render(data, size.width, size.height);
     const htmlPath = path.join(outDir, `${base}${suffix}.html`);

@@ -24,20 +24,38 @@ allowed-tools: Read,Write,Edit,MultiEdit,Bash,Glob,Grep
 - 把这段话做成文艺风海报，并保存成图片
 - 批量把这些金句都做成卡片
 
-也可能是结构化输入：
+也可能是结构化输入（键值对格式）：
 
+```
 作者：余华
 金句：没有什么比时间更具有说服力了，因为时间无需通知我们就可以改变一切。
 出自：《活着》
 主题：随机
 尺寸：竖版
+```
+
+也可能是 **Markdown 格式**（`/gift` 等场景常见）：
+
+```
+## 标题句（## 开头代表卡片标题/金句）
+正文段落内容，可以是多行文字，作为卡片正文展示在标题下方。
+出自：《来源书名/文章名》
+作者：某某某
+```
+
+Markdown 解析规则：
+- `## text` 或 `# text` → `quote`（标题，大字加粗）
+- `出自：text` → `source`
+- `作者：text` → `author`
+- 其余正文行 → `body`（正文段落，小字展示在标题下方）
 
 ## 二、字段提取规则
 
 尽量从自然语言中提取以下字段：
 
 - `author`：作者
-- `quote`：金句正文
+- `quote`：金句/标题正文（卡片主标题，大字加粗）
+- `body`：正文段落（可选，展示在标题下方，小字）
 - `source`：出自哪本书/文章/作品
 - `theme`：主题风格
 - `size`：尺寸
@@ -49,6 +67,12 @@ allowed-tools: Read,Write,Edit,MultiEdit,Bash,Glob,Grep
 - `size = portrait`
 - `exportImage = false`
 - `count = 1`
+
+> **重要**：当输入是 Markdown 格式时，必须正确区分 `quote`（标题）和 `body`（正文）：
+> - `## 这是标题` → `quote` 字段
+> - 标题下面的段落文字 → `body` 字段
+> - `出自：xxx` → `source` 字段
+> 两者都写入 `_input.json`，generate.js 会分别渲染为不同样式。
 
 ### 主题枚举
 - `minimal` 极简
