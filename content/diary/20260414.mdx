@@ -1,0 +1,125 @@
+---
+title: 日记：2026/04/09
+tags:
+  - 日记
+  - 生活记录
+  - 日常思考
+summary: 天气阴，21℃，Monday
+category: diary
+---
+
+3. LLM Wiki 的实现原理（人话版）
+它不是一个模型，是一套工作流程，核心就三步：
+① 编译阶段（Compile）
+你把一堆原始资料丢进去：书籍、论文、笔记、PDF、网页……
+AI 做这些事：
+自动分段、理解内容
+提取知识点
+建立条目（像维基词条）
+给词条加链接、分类、层级
+生成结构化的 Markdown Wiki 库
+这一步只做一次，之后持续增量更新。
+② 结构化知识库（The Wiki）
+最终产物是一个AI 自动维护的维基系统：
+每个主题一个页面
+页面之间互相引用
+内容精炼、无废话
+结构统一，方便检索
+相当于把 “杂乱原文” 编译成 “AI 能高效理解的知识结构”。
+③ 查询阶段（Query）
+你提问时：
+不去搜原始文档
+直接在 AI 整理好的 Wiki 里检索
+大模型基于结构化百科回答
+因为 Wiki 本身就是 AI 写的，语义对齐、结构清晰，所以回答质量远高于直接搜原文。
+
+## 极简 LLM Wiki 完整代码（Python）
+
+### 自动编译脚本：build.py
+
+```
+
+
+import ollama
+import os
+
+# 配置
+RAW_DIR = "raw"       # 原始文档
+WIKI_DIR = "wiki"     # 编译后的wiki
+MODEL = "qwen2.5:7b" # 你本地ollama的模型
+
+# 创建目录
+os.makedirs(WIKI_DIR, exist_ok=True)
+
+# LLM Wiki 核心编译提示词（Karpathy 思路）
+PROMPT = """
+你是一个知识编译器。
+把下面的原文编译成结构化维基百科条目：
+1. 使用 Markdown
+2. 分章节、分要点
+3. 关键概念加粗
+4. 交叉引用用 [[主题]] 格式
+5. 只保留知识，去掉废话
+6. 语言精炼
+
+原文：
+"""
+
+def compile_doc(filename):
+    with open(f"{RAW_DIR}/{filename}", "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # 调用本地LLM编译
+    response = ollama.chat(
+        model=MODEL,
+        messages=[{"role": "user", "content": PROMPT + content}]
+    )
+    wiki_content = response["message"]["content"]
+
+    # 保存到wiki目录
+    with open(f"{WIKI_DIR}/{filename[:-4]}.md", "w", encoding="utf-8") as f:
+        f.write(wiki_content)
+    
+    print(f"✅ 编译完成：{filename} → wiki/{filename[:-4]}.md")
+
+# 批量编译所有raw文件
+for f in os.listdir(RAW_DIR):
+    if f.endswith(".txt") or f.endswith(".md"):
+        compile_doc(f)
+
+```
+
+##  问答查询脚本：query.py
+
+```
+import ollama
+import os
+
+WIKI_DIR = "wiki"
+MODEL = "qwen2.5:7b"
+
+def search_wiki(query):
+    """最简单的关键词搜索 Wiki"""
+    results = []
+    for filename in os.listdir(WIKI_DIR):
+        with open(f"{WIKI_DIR}/{filename}", "r", encoding="utf-8") as f:
+            content = f.read()
+        if any(word in content for word in query.split()):
+            results.append(content)
+    return "\n\n---\n\n".join(results[:3])
+
+def ask(query):
+    context = search_wiki(query)
+    prompt = f"根据以下Wiki内容回答问题，不要编造：\n{context}\n问题：{query}"
+    
+    response = ollama.chat(model=MODEL, messages=[{"role": "user", "content": prompt}])
+    return response["message"]["content"]
+
+# 运行
+if __name__ == "__main__":
+    q = input("请输入问题：")
+    print("\n💡 LLM Wiki 回答：\n", ask(q))
+
+```
+
+
