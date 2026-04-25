@@ -134,11 +134,11 @@ function parseMarkdown(text) {
     const { width, height } = SIZES[sizeKey] || SIZES.portrait;
 
     const page = await browser.newPage();
-    // 设置 viewport 等于卡片尺寸，JS scale() 结果为 1.0，全尺寸渲染
-    await page.setViewport({ width, height, deviceScaleFactor: 1 });
+    // 宽度固定为卡片宽度，高度设为 10000 以容纳任意长度内容
+    await page.setViewport({ width, height: 10000, deviceScaleFactor: 1 });
     await page.goto('file:///' + htmlPath.replace(/\\/g, '/'), { waitUntil: 'networkidle0' });
 
-    // 截取 .card 元素，精确等于卡片像素，无灰色背景
+    // 截取 .card 元素，自动适配实际高度
     const cardEl = await page.$('.card');
     const pngPath = htmlPath.replace(/\.html$/, '.png');
     if (cardEl) {

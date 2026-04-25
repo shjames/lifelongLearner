@@ -83,7 +83,7 @@ function wrapCard(cardCSS, cardBody, W, H) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{width:100%;height:100%;overflow:hidden}
+html,body{width:100%;overflow-x:hidden}
 body{
   display:flex;
   align-items:flex-start;
@@ -97,9 +97,8 @@ body{
 }
 .card{
   width:${W}px;
-  height:${H}px;
+  min-height:${H}px;
   position:relative;
-  overflow:hidden;
 }
 ${cardCSS}
 </style>
@@ -113,13 +112,14 @@ ${cardBody}
 <script>
 (function(){
   var wrapper = document.querySelector('.card-wrapper');
-  var W = ${W}, H = ${H};
+  var card = document.querySelector('.card');
+  var W = ${W};
   function rescale(){
     var vw = window.innerWidth;
-    var vh = window.innerHeight;
-    var s = Math.min(vw / W, vh / H);
+    var s = Math.min(vw / W, 1);
     wrapper.style.transform = 'scale(' + s + ')';
-    document.body.style.height = Math.ceil(H * s) + 'px';
+    var scaledH = Math.ceil(card.scrollHeight * s);
+    document.body.style.minHeight = scaledH + 'px';
   }
   rescale();
   window.addEventListener('resize', rescale);
