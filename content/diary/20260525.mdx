@@ -1,0 +1,20 @@
+---
+title: 日记：2026/05/24
+tags:
+  - 日记
+  - 生活记录
+  - 日常思考
+summary: 阴雨，26℃，Monday
+category: diary
+---
+
+```
+ leadInfo: {
+              ...leadApprovalInfo,
+              ...Object.fromEntries(
+                Object.entries(leadInfoResponse ?? {}).filter(
+                  ([key]) => !(key in (leadApprovalInfo ?? {})),
+                ),
+              ),
+            }
+```
