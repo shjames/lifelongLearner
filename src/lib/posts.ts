@@ -93,7 +93,7 @@ export function getAllTags(): string[] {
 }
 
 export function getAllCategories(): PostMeta["category"][] {
-  return ["dev", "note", "diary", "essays", "opinions"];
+  return ["dev", "note", "diary", "essays", "opinions", "travel"];
 }
 
 export function searchPosts(query: string): Post[] {

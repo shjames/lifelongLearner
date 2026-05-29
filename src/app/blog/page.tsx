@@ -3,83 +3,87 @@ import { getAllPosts, getAllCategories, getAllTags } from "@/lib/posts";
 
 export const dynamic = "force-static";
 
+const CATEGORY_LABELS: Record<string, string> = {
+  dev: "开发", note: "笔记", diary: "日记",
+  essays: "随笔", opinions: "观点", travel: "旅游",
+};
+
 export default function BlogIndex() {
   const posts = getAllPosts();
-  console.log("posts", posts);
   const categories = getAllCategories();
   const tags = getAllTags();
-  return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
-      <h1 className="text-3xl font-bold">博客</h1>
-      <p className="text-zinc-600 mt-2">开发笔记、个人日记、生活随笔与观点</p>
 
-      <div className="mt-6 flex flex-wrap gap-2">
-        {categories.map((c) =>
-          c === "diary" ? (
+  return (
+    <div className="mx-auto max-w-5xl px-6 py-10">
+      {/* Header */}
+      <div className="mb-8 pb-8 border-b border-cream-200">
+        <h1
+          className="text-4xl font-bold text-cream-900"
+          style={{ fontFamily: "var(--font-playfair)" }}
+        >
+          所有文章
+        </h1>
+        <p className="text-cream-400 mt-2 text-sm">共 {posts.length} 篇</p>
+
+        {/* Category filters */}
+        <div className="mt-5 flex flex-wrap gap-2">
+          {categories.map((c) => (
             <Link
               key={c}
-              href={`/${c}`}
-              className="rounded-full border px-3 py-1 text-sm hover:bg-zinc-100"
+              href={c === "diary" ? "/diary" : `/category/${c}`}
+              className="rounded-full border border-cream-200 px-3.5 py-1.5 text-sm text-cream-600 hover:border-terra-300 hover:text-terra-600 hover:bg-terra-50 transition-all"
             >
-              {c}
+              {CATEGORY_LABELS[c] || c}
             </Link>
-          ) : (
-            <Link
-              key={c}
-              href={`/category/${c}`}
-              className="rounded-full border px-3 py-1 text-sm hover:bg-zinc-100"
-            >
-              {c}
-            </Link>
-          ),
+          ))}
+        </div>
+
+        {/* Tags */}
+        {tags.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {tags.map((t) => (
+              <Link
+                key={t}
+                href={`/tag/${t}`}
+                className="rounded-md bg-cream-100 px-2.5 py-1 text-xs text-cream-500 hover:bg-cream-200 hover:text-cream-700 transition-colors"
+              >
+                #{t}
+              </Link>
+            ))}
+          </div>
         )}
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-2">
-        {tags.map((t) => (
-          <Link
-            key={t}
-            href={`/tag/${t}`}
-            className="rounded-full bg-zinc-100 px-2 py-1 text-xs hover:bg-zinc-200"
-          >
-            #{t}
-          </Link>
-        ))}
-      </div>
-
-      <ul className="mt-8 space-y-6">
+      {/* Post list */}
+      <ul className="space-y-0.5">
         {posts.map((p) => (
-          <li key={p.slug} className="border-b pb-6">
+          <li key={p.slug}>
             <Link
               href={`/blog/${p.slug}`}
-              className="text-xl font-semibold hover:underline"
+              className="group flex items-start gap-4 rounded-xl px-4 py-3.5 hover:bg-cream-50 transition-colors"
             >
-              {p.title}
+              <span className="flex-none w-28 text-xs text-cream-400 pt-0.5 tabular-nums">
+                {p.date.slice(0, 10)}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-cream-800 group-hover:text-terra-600 transition-colors">
+                  {p.title}
+                </div>
+                {p.summary && (
+                  <p className="text-sm text-cream-400 mt-0.5 line-clamp-1">
+                    {p.summary}
+                  </p>
+                )}
+              </div>
+              <div className="flex-none flex items-center gap-2.5">
+                <span className="text-xs text-cream-400 hidden sm:block">
+                  {p.readingTime}
+                </span>
+                <span className="text-xs text-terra-600 bg-terra-50 px-2 py-0.5 rounded-full whitespace-nowrap">
+                  {CATEGORY_LABELS[p.category] || p.category}
+                </span>
+              </div>
             </Link>
-            <div className="mt-1 text-sm text-zinc-500">
-              <span>{p.date}</span>
-              <span className="mx-2">•</span>
-              <span>{p.readingTime}</span>
-              <span className="mx-2">•</span>
-              <Link
-                href={`/category/${p.category}`}
-                className="hover:underline"
-              >
-                {p.category}
-              </Link>
-            </div>
-            {p.summary && <p className="mt-2 text-zinc-700">{p.summary}</p>}
-            <div className="mt-2 flex flex-wrap gap-2">
-              {p.tags.map((t) => (
-                <Link
-                  key={t}
-                  href={`/tag/${t}`}
-                  className="rounded bg-zinc-100 px-2 py-1 text-xs"
-                >
-                  #{t}
-                </Link>
-              ))}
-            </div>
           </li>
         ))}
       </ul>

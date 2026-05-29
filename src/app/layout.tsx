@@ -1,48 +1,59 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
+import { NavLinks } from "@/components/nav-links";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const playfair = Playfair_Display({
+  variable: "--font-playfair",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
-  title: "个人博客",
-  description: "记录开发、日记、随笔与观点",
+  title: "Lifelong Learner",
+  description: "记录开发、日记、随笔、旅途与观点",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}> 
-        <header className="border-b bg-white/60 backdrop-blur">
-          <nav className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
-            <Link href="/" className="font-semibold">Lifelong Learner</Link>
-            <div className="flex items-center gap-4 text-sm">
-              <Link href="/blog" className="hover:underline">博客</Link>
-              <Link href="/category/dev" className="hover:underline">开发</Link>
-              <Link href="/category/note" className="hover:underline">笔记</Link>
-              <Link href="/diary" className="hover:underline">日记</Link>
-              <Link href="/category/essays" className="hover:underline">随笔</Link>
-              <Link href="/category/opinions" className="hover:underline">观点</Link>
-              <Link href="/search" className="hover:underline">搜索</Link>
-            </div>
+    <html lang="zh-CN">
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} antialiased bg-cream-25`}
+      >
+        {/* Header */}
+        <header className="sticky top-0 z-50 border-b border-cream-200 bg-cream-25/90 backdrop-blur-md">
+          <nav className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
+            <Link href="/" className="group flex items-center gap-2.5">
+              <div
+                className="w-8 h-8 rounded-lg bg-terra-600 flex items-center justify-center text-white font-bold text-xs shrink-0"
+                style={{ fontFamily: "var(--font-playfair)" }}
+              >
+                LL
+              </div>
+              <span className="font-semibold text-cream-900 tracking-tight group-hover:text-terra-600 transition-colors">
+                Lifelong Learner
+              </span>
+            </Link>
+            <NavLinks />
           </nav>
         </header>
-        <main>{children}</main>
-        <footer className="border-t mt-16">
-          <div className="mx-auto max-w-4xl px-6 py-6 text-sm text-zinc-500">© {new Date().getFullYear()} Lifelong Learner</div>
+
+        <main className="min-h-[calc(100vh-120px)]">{children}</main>
+
+        {/* Footer */}
+        <footer className="border-t border-cream-100 mt-20">
+          <div className="mx-auto max-w-5xl px-6 py-8 flex items-center justify-between">
+            <span className="text-sm text-cream-500">
+              © {new Date().getFullYear()} Lifelong Learner
+            </span>
+            <span className="text-xs text-cream-400">用文字记录成长</span>
+          </div>
         </footer>
       </body>
     </html>
