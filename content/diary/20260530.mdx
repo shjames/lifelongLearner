@@ -1,0 +1,121 @@
+---
+title: 日记：2026/05/30
+tags:
+  - 日记
+  - 生活记录
+  - 日常思考
+summary: 晴天，26℃，Saturday
+category: diary
+---
+
+## TypeScript 类型错误逐层解析
+
+```
+Type error: Type 'typeof import("...route")' does not satisfy the constraint
+  'RouteHandlerConfig<"/api/content/[...path]">'.
+```
+
+> "类型错误：route 文件导出的类型，不满足 RouteHandlerConfig<...> 这个约束。"
+>
+> - `typeof import(...)` = 你写的这个文件整体导出的类型
+> - `does not satisfy the constraint` = 不符合……要求
+> - `RouteHandlerConfig` = Next.js 内部定义的「一个合法路由处理文件应该长什么样」的类型规范
+>
+> 白话：你整个文件写法不对，Next.js 说"这不是我要的格式"。
+
+---
+
+```
+Types of property 'GET' are incompatible.
+```
+
+> "GET 这个属性的类型不兼容。"
+>
+> 缩进加深，开始定位具体是哪里不对。从"整个文件"缩小到"文件里的 GET 函数"。
+
+---
+
+```
+Type '(_req: Request, { params }: { params: { path?: string[] | undefined; }; }) => Promise<Response>'
+is not assignable to type
+'(request: NextRequest, context: { params: Promise<{ path: string[]; }>; }) => void | Response | Promise<void |
+Response>'.
+```
+
+> "你写的 GET 函数的类型，无法赋值给 Next.js 期望的 GET 函数类型。"
+>
+> 左边（你写的）：
+> - 第二个参数是 `{ params: { path?: string[] } }` ← 普通对象，同步取值
+> - 返回值是 `Promise<Response>`
+>
+> 右边（框架期望的）：
+> - 第二个参数是 `{ params: Promise<{ path: string[] }> }` ← params 是 Promise！
+> - 返回值是 `void | Response | Promise<void | Response>`
+>
+> 核心差距已经出现了：params 一个是普通对象，一个是 Promise。
+
+---
+
+```
+Types of parameters '__1' and 'context' are incompatible.
+```
+
+> "两个函数的第二个参数类型不兼容。"
+>
+> - `__1` = TypeScript 给你的匿名解构参数起的内部名字（因为你写的是 `{ params }` 解构，没有参数名）
+> - `context` = Next.js 期望的第二个参数名
+>
+> 继续缩小范围：从"整个函数"→ "函数的第二个参数"。
+
+---
+
+```
+Type '{ params: Promise<{ path: string[]; }>; }' is not assignable to type '{ params: { path?: string[] | undefined;
+}; }'.
+```
+
+> "框架传进来的 context 对象（params 是 Promise），无法赋值给你声明的参数类型（params 是普通对象）。"
+>
+> 注意方向：是框架往你的函数里传参数，所以框架的类型是"实际值"，你声明的类型是"接收槽"。框架传来的是 `Promise<...>`，但你的接收槽只认普通对象，类型不匹配，拒绝赋值。
+
+---
+
+```
+Types of property 'params' are incompatible.
+  Type 'Promise<{ path: string[]; }>' has no properties in common with type '{ path?: string[] | undefined; }'.
+```
+
+> "两边 params 字段的类型完全不兼容：`Promise<...>` 和普通对象 `{ path?: string[] }` 之间没有任何共同属性。"
+>
+> `has no properties in common` 是 TypeScript 在说：这两个类型之间的差距不是"少了某个字段"，而是根本就是两种东西——一个是 Promise 对象（有 `.then`、`.catch`、`.finally`），一个是你自定义的数据对象（有 `.path`），互相没有交集。
+>
+> 这是最深一层缩进，即根本原因：
+
+| | 你写的 | Next.js 16 期望的 |
+|---|---|---|
+| params 的类型 | `{ path?: string[] }` 普通对象 | `Promise<{ path: string[] }>` |
+| 取值方式 | 直接 `params.path` | 需要 `await params` 再取 `.path` |
+| 引入版本 | Next.js 14 及以前的写法 | Next.js 15+ 的破坏性变更 |
+
+---
+
+整体错误逻辑图
+
+```
+文件整体不符合规范
+  └─ GET 函数类型不对
+       └─ 第二个参数类型不对
+            └─ context.params 类型不对
+                 └─ 根因：params 应该是 Promise，你写成了普通对象
+```
+
+TypeScript 的类型错误永远是从外到内逐层缩进描述的，最深那行才是真正要改的地方，上面的层级只是在告诉你"怎么一路走到这个问题的"。
+
+
+--------------------
+
+今天吃到了六块八一斤的，很脆又超多水分的苹果，口味酸甜酸甜的，好久没吃过这么好吃苹果了，就是吃完后还回味无穷的哪种感觉
+
+今晚还买了21.8一斤的金枕榴莲，最后95.9（和老板砍下95块，老板不赏脸）全款拿下
+
+今晚还做了龟苓膏（粉水比例1：24）、第一次买了活珠子（还没有试）、明天还想试着打玉米汁喝、搞个竹笋焖饭吃

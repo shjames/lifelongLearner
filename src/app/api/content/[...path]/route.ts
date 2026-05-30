@@ -1,6 +1,12 @@
 import fs from "fs";
 import path from "path";
 
+export const dynamic = "force-static";
+
+export function generateStaticParams() {
+  return [];
+}
+
 export async function GET(
   _req: Request,
   context: { params: Promise<{ path?: string[] }> }
