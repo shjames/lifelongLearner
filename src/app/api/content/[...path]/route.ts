@@ -3,9 +3,10 @@ import path from "path";
 
 export async function GET(
   _req: Request,
-  { params }: { params: { path?: string[] } }
+  context: { params: Promise<{ path?: string[] }> }
 ) {
-  const rawParts = Array.isArray(params.path) ? params.path.filter(Boolean) : [];
+  const { path: pathSegments } = await context.params;
+  const rawParts = Array.isArray(pathSegments) ? pathSegments.filter(Boolean) : [];
   if (rawParts.length === 0) return new Response("Not Found", { status: 404 });
   const decParts = rawParts.map((s) => {
     try {
