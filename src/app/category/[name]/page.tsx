@@ -67,9 +67,9 @@ export default async function CategoryPage({
             <li key={p.slug}>
               <Link
                 href={`/blog/${p.slug}`}
-                className="group flex items-start gap-4 rounded-xl px-4 py-3.5 hover:bg-cream-50 transition-colors"
+                className="group flex flex-col sm:flex-row sm:items-start sm:gap-4 rounded-xl px-4 py-3 hover:bg-cream-50 transition-colors"
               >
-                <span className="flex-none w-28 text-xs text-cream-400 pt-0.5 tabular-nums">
+                <span className="text-xs text-cream-400 tabular-nums mb-0.5 sm:mb-0 sm:flex-none sm:w-28 sm:pt-0.5">
                   {p.date.slice(0, 10)}
                 </span>
                 <div className="flex-1 min-w-0">
@@ -82,7 +82,7 @@ export default async function CategoryPage({
                     </p>
                   )}
                   {p.tags.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
+                    <div className="mt-1.5 flex flex-wrap gap-1">
                       {p.tags.map((t) => (
                         <span
                           key={t}
@@ -94,7 +94,7 @@ export default async function CategoryPage({
                     </div>
                   )}
                 </div>
-                <span className="flex-none text-xs text-cream-400 pt-0.5">
+                <span className="hidden sm:block flex-none text-xs text-cream-400 pt-0.5">
                   {p.readingTime}
                 </span>
               </Link>

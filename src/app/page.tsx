@@ -99,9 +99,9 @@ export default function Home() {
             <li key={p.slug}>
               <Link
                 href={`/blog/${p.slug}`}
-                className="group flex items-start gap-4 rounded-xl px-4 py-3 hover:bg-cream-50 transition-colors"
+                className="group flex flex-col sm:flex-row sm:items-start sm:gap-4 rounded-xl px-4 py-3 hover:bg-cream-50 transition-colors"
               >
-                <span className="flex-none w-24 text-xs text-cream-400 pt-0.5 tabular-nums">
+                <span className="text-xs text-cream-400 tabular-nums mb-0.5 sm:mb-0 sm:flex-none sm:w-24 sm:pt-0.5">
                   {p.date.slice(0, 10)}
                 </span>
                 <div className="flex-1 min-w-0">
@@ -114,7 +114,7 @@ export default function Home() {
                     </p>
                   )}
                 </div>
-                <span className="flex-none text-xs text-terra-600 bg-terra-50 px-2 py-0.5 rounded-full whitespace-nowrap">
+                <span className="mt-1 sm:mt-0 self-start sm:self-auto flex-none text-xs text-terra-600 bg-terra-50 px-2 py-0.5 rounded-full whitespace-nowrap">
                   {CATEGORY_LABELS[p.category] || p.category}
                 </span>
               </Link>

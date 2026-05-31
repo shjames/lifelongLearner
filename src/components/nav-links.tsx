@@ -17,7 +17,7 @@ export function NavLinks() {
   const pathname = usePathname();
 
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden gap-0">
       {NAV.map(({ href, label, exact }) => {
         const active = exact
           ? pathname === href
@@ -29,7 +29,7 @@ export function NavLinks() {
           <Link
             key={href}
             href={href}
-            className={`relative px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+            className={`shrink-0 px-2.5 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
               active
                 ? "text-terra-600 bg-terra-50"
                 : "text-cream-600 hover:text-cream-900 hover:bg-cream-50"

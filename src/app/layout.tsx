@@ -36,7 +36,7 @@ export default function RootLayout({
               >
                 LL
               </div>
-              <span className="font-semibold text-cream-900 tracking-tight group-hover:text-terra-600 transition-colors">
+              <span className="hidden sm:block font-semibold text-cream-900 tracking-tight group-hover:text-terra-600 transition-colors">
                 Lifelong Learner
               </span>
             </Link>

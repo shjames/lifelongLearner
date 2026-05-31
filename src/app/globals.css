@@ -37,6 +37,12 @@ body {
   color: var(--color-cream-900);
 }
 
+/* 消除移动端 300ms 点击延迟 */
+a, button, [role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* ─── Article prose ─── */
 .prose-article {
   color: var(--color-cream-700);
