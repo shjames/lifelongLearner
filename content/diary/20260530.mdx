@@ -15,7 +15,7 @@ Type error: Type 'typeof import("...route")' does not satisfy the constraint
   'RouteHandlerConfig<"/api/content/[...path]">'.
 ```
 
-> "类型错误：route 文件导出的类型，不满足 RouteHandlerConfig<...> 这个约束。"
+> "类型错误：route 文件导出的类型，不满足 `RouteHandlerConfig<T>` 这个约束。"
 >
 > - `typeof import(...)` = 你写的这个文件整体导出的类型
 > - `does not satisfy the constraint` = 不符合……要求
@@ -76,7 +76,7 @@ Type '{ params: Promise<{ path: string[]; }>; }' is not assignable to type '{ pa
 
 > "框架传进来的 context 对象（params 是 Promise），无法赋值给你声明的参数类型（params 是普通对象）。"
 >
-> 注意方向：是框架往你的函数里传参数，所以框架的类型是"实际值"，你声明的类型是"接收槽"。框架传来的是 `Promise<...>`，但你的接收槽只认普通对象，类型不匹配，拒绝赋值。
+> 注意方向：是框架往你的函数里传参数，所以框架的类型是"实际值"，你声明的类型是"接收槽"。框架传来的是 `Promise<T>`，但你的接收槽只认普通对象，类型不匹配，拒绝赋值。
 
 ---
 
