@@ -11,13 +11,22 @@ import {
   ImagesManualPublic,
 } from "@/components/content-image";
 import Image from "@/components/Image";
+function ScrollableTable({ children, ...props }: React.ComponentPropsWithoutRef<"table">) {
+  return (
+    <div className="overflow-x-auto rounded-lg [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-cream-300">
+      <table {...props}>{children}</table>
+    </div>
+  );
+}
+
 const components = {
   Gallery,
   ContentImg,
   ImagesManual,
   ContentImgPublic,
   ImagesManualPublic,
-  Image
+  Image,
+  table: ScrollableTable,
 };
 
 export function MDXContent({ source }: { source: string }) {
