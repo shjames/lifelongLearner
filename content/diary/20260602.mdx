@@ -240,7 +240,22 @@ typeof Symbol('foo')            // "symbol"
 Symbol('foo').description       // "foo"（只能拿描述标签）
 ```
 
-不会自动转为字符串，隐式转换报 `TypeError`，必须显式调用 `.toString()` 或 `.description`。
+不会自动转为字符串，隐式转换报 `TypeError`，必须显式调用 `.toString()` 或 `.description`：
+
+```js
+const s = Symbol("id");
+
+// 隐式转换全部报错
+console.log("前缀：" + s);  // TypeError: Cannot convert a Symbol value to a string
+`值是：${s}`;                // TypeError: Cannot convert a Symbol value to a string
+s + "";                      // TypeError
+
+// 必须显式转
+s.toString()   // "Symbol(id)"  ✅
+s.description  // "id"          ✅
+```
+
+这是故意设计成不允许隐式转换的——防止不小心把 Symbol 当字符串用，掩盖 bug。
 
 ---
 
