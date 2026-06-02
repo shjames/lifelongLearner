@@ -1,0 +1,347 @@
+---
+title: 日记：2026/06/02
+tags:
+  - 日记
+  - 生活记录
+  - 日常思考
+  - JavaScript
+  - 学习笔记
+summary: 晴天，26℃，Tuesday
+category: diary
+---
+
+## 学习笔记
+
+> 主题：Object 迭代方法 / Iterator 惰性求值 / Symbol 完整知识体系
+
+---
+
+### 一、Object.entries / Object.fromEntries
+
+**`Object.entries(obj)`** — 把对象展开为 `[key, value]` 二元数组：
+
+```js
+Object.entries({ a: 1, b: 2 }) // → [["a",1], ["b",2]]
+```
+
+**`Object.fromEntries(entries)`** — 把 `[key, value]` 数组还原为对象：
+
+```js
+Object.fromEntries([["a",1], ["b",2]]) // → { a: 1, b: 2 }
+```
+
+**常用组合模式**：
+
+```js
+const obj = { name: "Alice", age: 30, secret: "hidden" };
+
+// 过滤字段
+Object.fromEntries(Object.entries(obj).filter(([k]) => k !== "secret"))
+// → { name: "Alice", age: 30 }
+
+// 转换值
+Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, String(v).toUpperCase()]))
+// → { name: "ALICE", age: "30", secret: "HIDDEN" }
+
+// Map ↔ Object 互转
+const map = new Map(Object.entries(obj))  // Object → Map
+Object.fromEntries(map)                   // Map → Object，结果等同于 obj
+```
+
+**`key in obj` vs `obj[key] !== undefined`**：前者能正确识别值为 `undefined` / `null` / `0` / `false` 的字段，后者不能。
+
+---
+
+### 二、为什么 Map 有 `map.keys()` 而普通对象只有 `Object.keys(obj)`
+
+Map 可以直接调实例方法：
+
+```js
+const map = new Map([['name', 'Alice'], ['age', 30]]);
+map.keys()     // → MapIterator { 'name', 'age' }
+map.values()   // → MapIterator { 'Alice', 30 }
+map.entries()  // → MapIterator { ['name','Alice'], ['age',30] }
+```
+
+普通对象不行，只能用静态方法：
+
+```js
+const obj = { name: "Alice", age: 30 };
+Object.keys(obj)    // → ["name", "age"]
+Object.values(obj)  // → ["Alice", 30]
+Object.entries(obj) // → [["name","Alice"], ["age",30]]
+```
+
+**原因：普通对象的 key 是任意的，挂实例方法会有命名冲突风险。**
+
+如果 JS 给普通对象也挂上 `keys` 实例方法，那么：
+
+```js
+const obj = { name: "Alice", keys: "我自己的字段" };
+//                             ↑ 用户自己定义了叫 keys 的字段
+//                               就会把内置的 keys 方法覆盖掉
+```
+
+Map 不存在这个问题，因为 Map 的数据存在内部插槽里，不直接暴露为对象属性，实例方法（`keys`、`values`、`entries`）不会被用户数据覆盖。
+
+所以设计上：**普通对象用静态方法隔离，Map 可以安全地用实例方法。**
+
+---
+
+### 三、Array vs Iterator 的区别
+
+|  | Array | Iterator |
+|---|---|---|
+| `.length` | ✅ 有 | ❌ 没有 |
+| `.filter` / `.map` | ✅ 立即执行，返回新数组 | ✅ 仅注册行为（需 Iterator Helpers） |
+| `for...of` | ✅ | ✅ |
+
+```js
+const map = new Map([['name', 'Alice'], ['age', 30]]);
+const iter = map.keys();  // iter 是迭代器，不是数组
+
+iter.length        // undefined，迭代器没有 length
+iter.filter        // 有（Iterator Helpers，Chrome 117+）
+iter.map           // 有（Iterator Helpers，Chrome 117+）
+
+const arr = ['a', 'b', 'c'];
+arr.length         // 3
+arr.filter         // 有（Array.prototype 上）
+arr.map            // 有（Array.prototype 上）
+```
+
+`iter.filter` / `iter.map` 挂在 `Iterator.prototype` 上，不在 `Array.prototype`，两者是不同的类型。
+
+---
+
+### 四、Iterator 的惰性（Lazy Evaluation）
+
+`.map()` / `.filter()` 调用时**不执行回调**，只返回一个新的迭代器（"注册行为"）：
+
+```js
+const arr = [1, 2, 3, 4, 5];
+const iter = arr.values();  // 从数组拿到迭代器
+
+iter.map(x => x * 2)  // 什么都没算，只是说"取值时要 ×2"，回调没有执行
+```
+
+必须"消费"才会触发执行：
+
+```js
+const iter = [1, 2, 3, 4, 5].values();
+
+for (const val of iter.map(x => x * 2)) { }   // 消费时才逐个计算：2, 4, 6, 8, 10
+[...[1,2,3].values().map(x => x * 2)]          // 展开运算符触发：[2, 4, 6]
+[1,2,3].values().map(x => x * 2).toArray()     // Iterator Helpers 提供：[2, 4, 6]
+```
+
+**惰性的价值**：链式操作只遍历一次；可以提前中止（`.take(3)`），节省大量计算：
+
+```js
+// 假设有 100 万条数据的迭代器
+const hugeIterator = getMillion().values();
+
+hugeIterator.map(fn).filter(cond).take(3).toArray()
+// 找到 3 个就停，不处理剩余的 999997 个
+
+// 对比数组写法：先 map 全部 100万条，再 filter 全部，再取前 3 个——浪费
+```
+
+**迭代器是"管道"**：`lazyResult` 不存自己的数据，内部引用源 `iter`。消费 `lazyResult` 时，内部驱动 `iter.next()`，拿到原始值再变换。管道用完，源也就耗尽了。
+
+```js
+const iter = [1, 2, 3].values();
+const lazyResult = iter.map(x => x * 2);  // 管道，指向 iter
+
+for (const val of lazyResult) {
+  console.log(val);  // 2, 4, 6
+}
+// lazyResult 消费完 → iter 也耗尽了
+console.log([...iter]);  // []，iter 已经没有值了
+```
+
+---
+
+### 五、没有 Iterator Helpers 之前如何定义迭代器行为
+
+**方法一：手动实现迭代器协议**
+
+```js
+function createRange(start, end) {
+  let current = start;
+  return {
+    [Symbol.iterator]() { return this; },
+    next() {
+      if (current <= end) return { value: current++, done: false };
+      return { value: undefined, done: true };
+    }
+  };
+}
+```
+
+**方法二：Generator 函数**（最主流）
+
+```js
+function* range(start, end) {
+  for (let i = start; i <= end; i++) yield i;
+}
+// 链式操作要手写嵌套 generator，很丑陋
+```
+
+**方法三：转数组**（最简单，失去惰性）
+
+```js
+function* range(start, end) {
+  for (let i = start; i <= end; i++) yield i;
+}
+
+const iter = range(1, 10);
+
+// 先展开成数组，再用数组方法——简单但失去惰性，会全量计算
+[...iter].map(x => x * 2).filter(x => x > 4)
+// → [6, 8, 10, 12, 14, 16, 18, 20]
+```
+
+---
+
+### 六、`[Symbol.iterator]() { return this; }` 的作用
+
+JS 有两个迭代协议：
+
+- **可迭代协议**：对象有 `[Symbol.iterator]()` 方法 → 能被 `for...of` 消费
+- **迭代器协议**：对象有 `next()` 方法 → 能驱动迭代
+
+`[Symbol.iterator]() { return this; }` 让对象**同时满足两个协议**——自己既是可迭代对象，也是自己的迭代器。少了这行，`for...of` 找不到入口会报 `is not iterable`。
+
+```js
+// createRange 同时满足两个协议，可以直接被 for...of 消费
+const range = createRange(1, 5);
+for (const n of range) {
+  console.log(n);  // 1, 2, 3, 4, 5
+}
+
+// 也可以展开
+console.log([...createRange(1, 3)]);  // [1, 2, 3]
+
+// 如果去掉 [Symbol.iterator]() { return this; } 这行：
+const badRange = { next() { ... } };  // 只有 next，没有 [Symbol.iterator]
+for (const n of badRange) { }         // TypeError: badRange is not iterable
+```
+
+---
+
+### 七、Symbol 是什么
+
+Symbol 是**唯一标识符**类型。引擎内部为每个 Symbol 分配一个不可见的唯一整数 ID，JS 层面无法读取这个 ID：
+
+```js
+Symbol('foo') === Symbol('foo') // false，每次都是新 ID
+typeof Symbol('foo')            // "symbol"
+Symbol('foo').description       // "foo"（只能拿描述标签）
+```
+
+不会自动转为字符串，隐式转换报 `TypeError`，必须显式调用 `.toString()` 或 `.description`。
+
+---
+
+### 八、`Symbol.iterator` 是什么
+
+`Symbol.iterator` 是 JS 引擎**启动时预置的内置 Symbol**（Well-Known Symbol），作为静态属性挂在 `Symbol` 上：
+
+```js
+typeof Symbol.iterator  // "symbol"
+Symbol.iterator === Symbol.iterator  // true，永远是同一个值
+```
+
+**它是只读的，不可被覆盖**：
+
+```js
+Object.getOwnPropertyDescriptor(Symbol, 'iterator')
+// { writable: false, configurable: false, ... }
+
+Symbol.iterator = Symbol("anything") // 严格模式 TypeError，非严格模式静默失败
+```
+
+---
+
+### 九、为什么用 `obj[Symbol.iterator]` 而不是 `obj.iterator`
+
+Symbol 的不可见性和唯一性让它天然适合作为"协议暗语"：
+
+- 不会和对象的普通字符串属性冲突
+- `Symbol.iterator` 永远不变，消费方和定义方用的是同一把"钥匙"
+
+**完整链条**：
+
+```
+Symbol.iterator 只读、永远不变
+       ↓
+定义：obj[Symbol.iterator] = fn   ← 用它当 key 挂上去
+       ↓
+消费：obj[Symbol.iterator]()      ← 用同一个 key 取出来
+       ↓
+for...of / 展开运算符 / 解构 内部自动做这件事
+```
+
+**真实代码示例**：
+
+```js
+const range = {
+  from: 1,
+  to: 3,
+  [Symbol.iterator]() {        // 定义：用 Symbol.iterator 这个 key 挂上去
+    let current = this.from;
+    const last = this.to;
+    return {
+      next() {
+        if (current <= last) return { value: current++, done: false };
+        return { value: undefined, done: true };
+      }
+    };
+  }
+};
+
+// 消费时，for...of 内部做的是：
+// 1. 调用 range[Symbol.iterator]()，拿到迭代器
+// 2. 反复调用迭代器的 next()，直到 done: true
+for (const n of range) {
+  console.log(n);  // 1, 2, 3
+}
+
+console.log([...range]);  // [1, 2, 3]
+```
+
+---
+
+### 十、全局 Symbol 注册表
+
+**`Symbol.for(key)`** — 查表，有则复用，无则创建：
+
+```js
+Symbol.for("id") === Symbol.for("id")  // true，同一个实例
+Symbol("id") === Symbol("id")          // false，每次新建
+```
+
+**跨模块共享**：不同模块用相同 key 调 `Symbol.for()`，拿到的是同一个 Symbol。
+
+**`Symbol.keyFor(sym)`** — 反向查找注册表里的 key：
+
+```js
+const s = Symbol.for("user-id");
+Symbol.keyFor(s)  // "user-id"
+
+const local = Symbol("user-id");
+Symbol.keyFor(local)  // undefined，因为 Symbol() 不走注册表
+```
+
+---
+
+### 十一、Symbol.iterator vs Symbol.for 的区别
+
+|  | `Symbol.for()` | `Symbol.iterator` |
+|---|---|---|
+| 存在哪里 | 全局注册表 | 引擎预置，静态属性 |
+| `keyFor` 能查到 | ✅ 返回 key 字符串 | ❌ 返回 `undefined` |
+| 用途 | 开发者跨模块共享自定义 Symbol | 语言内置协议的"门牌号" |
+| 可覆盖 | — | ❌ 只读锁死 |
+
