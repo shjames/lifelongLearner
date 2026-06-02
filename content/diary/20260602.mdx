@@ -345,3 +345,59 @@ Symbol.keyFor(local)  // undefined，因为 Symbol() 不走注册表
 | 用途 | 开发者跨模块共享自定义 Symbol | 语言内置协议的"门牌号" |
 | 可覆盖 | — | ❌ 只读锁死 |
 
+---
+
+### 十二、`Object.getPrototypeOf` — 获取对象的原型
+
+```js
+Object.getPrototypeOf(obj)  // 返回 obj 的原型，即原型链的上一层
+```
+
+等价于老写法 `obj.__proto__`，但 `__proto__` 是非标准属性，推荐用 `Object.getPrototypeOf`。
+
+**基础示例**：
+
+```js
+Object.getPrototypeOf([1, 2, 3]) === Array.prototype   // true
+Object.getPrototypeOf(new Map()) === Map.prototype      // true
+Object.getPrototypeOf({})        === Object.prototype  // true
+Object.getPrototypeOf(Object.prototype)                // null（原型链终点）
+```
+
+**原型链结构**：
+
+```js
+const map = new Map();
+
+// map 实例
+//   ↓ getPrototypeOf
+// Map.prototype（keys、values、get、set...）
+//   ↓ getPrototypeOf
+// Object.prototype（toString、hasOwnProperty...）
+//   ↓ getPrototypeOf
+// null（终点）
+
+Object.getPrototypeOf(map)                         // Map.prototype
+Object.getPrototypeOf(Object.getPrototypeOf(map))  // Object.prototype
+```
+
+**实际用途 — 跳过被遮蔽的自身属性，直接从原型上取方法**：
+
+```js
+const map = new Map([['name', 'Alice']]);
+map.keys = 333;   // 自身属性遮蔽了原型上的 keys 方法
+
+map.keys()        // TypeError: map.keys is not a function
+
+// 绕过自身属性，从原型直接取，用 .call(map) 手动绑定 this
+Map.prototype.keys.call(map)               // → MapIterator { 'name' }  ✅
+Object.getPrototypeOf(map).keys.call(map)  // → MapIterator { 'name' }  ✅ 同效果
+```
+
+**与 `instanceof` 的关系**：`instanceof` 内部就是沿原型链逐层用 `getPrototypeOf` 检查：
+
+```js
+map instanceof Map
+// 等价于：Object.getPrototypeOf(map) === Map.prototype → true
+```
+
