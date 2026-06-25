@@ -1,0 +1,475 @@
+---
+title: 日记：2026/06/21
+tags:
+  - 日记
+  - react  原理学习
+  - 学习
+summary: 日志
+category: diary
+---
+
+# React 自定义 Hook 深度原理教程
+
+> 本文结合项目中 `src/hooks/useMerchantFields.ts` 和 `src/components/MerchantFieldsReady/index.tsx` 的真实代码，由浅入深地讲透自定义 Hook 的底层机制。
+
+---
+
+## 一、先建立一个正确的心智模型：React 到底在管理什么
+
+### 1.1 React 的核心职责
+
+React 的核心职责只有一件事：**把 UI 状态映射成 DOM**。
+
+```
+state → UI (JSX → DOM)
+```
+
+当 state 变化时，React 重新执行组件函数，得到新的 JSX，再把差异更新到 DOM。这个过程叫 **re-render**（重渲染）。
+
+### 1.2 Fiber：React 内部的"组件档案卡"
+
+React 内部用一种叫 **Fiber** 的数据结构来追踪每一个组件实例。你可以把 Fiber 理解为一张档案卡：
+
+```
+Fiber 节点（每个组件实例对应一个）
+├── type: 组件函数本身（如 MerchantFieldsReady）
+├── stateNode: 对应的 DOM 节点
+├── memoizedState: 【链表】该组件所有 Hook 的状态
+│   ├── Hook[0]: useState 的值
+│   ├── Hook[1]: useState 的值
+│   ├── Hook[2]: useEffect 的依赖和清理函数
+│   └── ...
+└── ...其他字段
+```
+
+**关键点**：`memoizedState` 这个链表是挂在 **Fiber 节点**上的，不是在函数里面。函数每次执行都是临时的，但 Fiber 节点是持久存在的。
+
+### 1.3 useState 实际上做了什么
+
+当你写：
+
+```tsx
+const [count, setCount] = useState(0);
+```
+
+React 内部做的是：
+
+1. 找到当前正在渲染的组件对应的 **Fiber 节点**
+2. 在该 Fiber 的 `memoizedState` 链表上，按顺序找到（或创建）这个 Hook 的"槽位"
+3. 返回槽位里存的值和一个 setter 函数
+
+当你调用 `setCount(1)` 时：
+
+1. React 把新值写入该 Fiber 的 `memoizedState` 对应槽位
+2. **标记该 Fiber 需要重新渲染**（dirty）
+3. 调度一次渲染，React 重新执行该组件函数
+
+**所以 state 存在 Fiber 上，不在函数里。** 函数执行完就消失了，但 Fiber 一直在。
+
+---
+
+## 二、自定义 Hook 的本质：它只是一个普通函数
+
+### 2.1 自定义 Hook 没有任何魔法
+
+自定义 Hook（以 `use` 开头的函数）在 JavaScript 层面就是一个普通函数。React 对它没有任何特殊处理——`use` 前缀只是社区约定，用来告诉开发者"这个函数里面用了 Hook，请遵守 Hook 的调用规则"。
+
+```tsx
+// 这只是一个普通函数
+const useMerchantFields = (moduleKey?, sectionKey?) => {
+  const [state, setState] = useState(cache);  // 这行才是关键
+  // ...
+  return { fields, allSchemas, ... };
+};
+```
+
+当 `MerchantFieldsReady` 调用它时：
+
+```tsx
+// MerchantFieldsReady/index.tsx:57
+useMerchantFields();
+```
+
+React 看到的是：**正在执行 `MerchantFieldsReady` 这个组件函数，过程中调用了 `useState`**。React 不知道这个 `useState` 是在哪个函数里写的，它只关心"当前正在渲染哪个组件"。
+
+### 2.2 Hook 里的 state 归属于调用它的组件
+
+这是整篇教程最核心的一句话：
+
+> **自定义 Hook 里写的 `useState`，其 state 挂在调用该 Hook 的组件的 Fiber 上，不在 Hook 函数本身。**
+
+用图来理解：
+
+```
+MerchantFieldsReady 的 Fiber
+├── memoizedState 链表:
+│   ├── Hook[0]: useMemo (fieldConfig) ← 来自 MerchantFieldsReady 自己的第1行 useMemo
+│   ├── Hook[1]: useState (state=cache) ← 来自 useMerchantFields() 里的第1个 useState
+│   ├── Hook[2]: useState (loading=false)← 来自 useMerchantFields() 里的第2个 useState
+│   ├── Hook[3]: useMemo (fields)        ← 来自 useMerchantFields() 里的 useMemo
+│   ├── Hook[4]: useCallback(refreshIfStale) ← ...
+│   ├── Hook[5]: useCallback(ensureReady)   ← ...
+│   └── Hook[6]: useEffect (注册listener) ← 来自 useMerchantFields() 里的 useEffect
+```
+
+所有这些 Hook 槽位，全部在 `MerchantFieldsReady` 的 Fiber 上，不存在一个独立的 `useMerchantFields` Fiber。
+
+---
+
+## 三、项目代码逐层解析
+
+现在用 `useMerchantFields.ts` 的实际代码来走一遍完整流程。
+
+### 3.1 模块级共享状态
+
+```ts
+// useMerchantFields.ts:262
+let cache: FieldsCacheState = initialCache;
+
+// useMerchantFields.ts:267
+const listeners = new Set<() => void>();
+```
+
+这两个变量定义在**模块作用域**（文件顶层），不在任何函数或组件里。
+
+**这意味着什么？**
+
+- 整个应用生命周期内，`cache` 和 `listeners` 只有**一份**，被所有调用 `useMerchantFields()` 的组件共享。
+- 这是刻意的设计：字段配置是全局共享的，不需要每个组件各自维护一份。
+
+### 3.2 为什么需要 `listeners`：跨越 React 的边界
+
+`cache` 是一个普通 JS 对象，React 不知道它的存在，也不会监听它的变化。
+
+当 API 请求完成后，代码直接修改了 `cache`：
+
+```ts
+// useMerchantFields.ts:380-387
+cache = {
+  version: next?.version ?? cache.version,
+  bySection: mergedBySection,
+  fields: next ? { ...cache.fields, ...next.fields } : cache.fields,
+  // ...
+};
+```
+
+但此时 React 毫不知情，不会触发任何组件的 re-render。
+
+**解决方案：发布-订阅模式（Pub-Sub）**
+
+`listeners` 这个 Set 就是用来解决这个问题的：
+
+```ts
+// useMerchantFields.ts:283
+const notify = () => listeners.forEach((listener) => listener());
+```
+
+`notify()` 在 `cache` 更新后立即调用（第 388 行），它遍历所有注册的监听函数，每个监听函数都会调用其所属组件的 `setState`，从而触发 React 重新渲染。
+
+### 3.3 订阅注册：useEffect 的职责
+
+```ts
+// useMerchantFields.ts:498-504
+useEffect(() => {
+  const listener = () => setState(cache);
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}, []);
+```
+
+这段 `useEffect` 做了三件事：
+
+1. **组件挂载时**（`[]` 依赖数组为空，只执行一次）：创建一个 listener，注册到全局 `listeners` Set 里。这个 listener 的作用就是把最新的 `cache` 同步给组件的本地 state。
+
+2. **每次 `notify()` 被调用时**：listener 执行 `setState(cache)`，把最新的全局 `cache` 写入当前组件的 Fiber，触发 re-render。
+
+3. **组件卸载时**（`return () => {...}` 是清理函数）：从 `listeners` Set 里删除自己，防止内存泄漏——避免组件已卸载但 `notify()` 还在调用已死亡的 setState。
+
+### 3.4 完整数据流
+
+把上面所有步骤串联起来：
+
+```
+1. MerchantFieldsReady 挂载
+   └→ useMerchantFields() 执行
+      └→ useState(cache) 在 MerchantFieldsReady 的 Fiber 上创建 Hook[1]
+      └→ useEffect 注册 listener = () => setState(cache) 到全局 listeners
+
+2. MerchantFieldsReady 的 useEffect 触发 prefetchMerchantFields()
+   └→ fetchMain() 发起 API 请求
+
+3. API 请求完成
+   └→ 更新全局 cache 变量（普通 JS 赋值，React 不知情）
+   └→ notify() 被调用
+      └→ 遍历 listeners，调用 listener()
+         └→ setState(cache) 执行
+            └→ React 标记 MerchantFieldsReady 的 Fiber 为 dirty
+               └→ React 调度重渲染
+                  └→ MerchantFieldsReady 函数重新执行
+                     └→ ready 重新计算：hasMerchantFieldsCache() 现在返回 true
+                        └→ 从 <PageLoading /> 切换为渲染 children ✓
+```
+
+### 3.5 多组件同时订阅的情况
+
+如果页面上有多个组件都调用了 `useMerchantFields()`，比如：
+
+```tsx
+// 组件A
+const ComponentA = () => {
+  const { fields } = useMerchantFields('PAGE_X', 'SECTION_A');
+  // ...
+};
+
+// 组件B
+const ComponentB = () => {
+  const { fields } = useMerchantFields('PAGE_X', 'SECTION_B');
+  // ...
+};
+```
+
+此时 `listeners` 里有**两个独立的 listener**，分别持有各自组件的 `setState`：
+
+```
+listeners = {
+  () => setState_A(cache),  // ComponentA 的 setState
+  () => setState_B(cache),  // ComponentB 的 setState
+}
+```
+
+`notify()` 触发时，两个组件**都会 re-render**，各自从 `cache` 里取自己需要的数据。
+
+---
+
+## 四、Hook 返回 JSX vs 返回普通值
+
+你在对话中问过：如果 Hook 不返回 `{ fields, allSchemas, ... }` 而是返回 JSX，有什么区别？
+
+### 4.1 对 re-render 行为：没有任何区别
+
+无论 Hook 返回什么，`setState` 的归属不变。`setState` 永远属于调用该 Hook 的组件的 Fiber，调用它永远触发那个组件的 re-render。
+
+```tsx
+// 返回普通值
+const useA = () => {
+  const [count, setCount] = useState(0);
+  return count; // 返回数字
+};
+
+// 返回 JSX
+const useB = () => {
+  const [count, setCount] = useState(0);
+  return <div>{count}</div>; // 返回 React element（也是普通 JS 对象）
+};
+
+// 两者的 state 都属于调用方的 Fiber，re-render 行为完全相同
+```
+
+### 4.2 JSX 只是一个普通对象
+
+JSX 经过 Babel 编译后，变成 `React.createElement()` 的调用，返回的是一个普通 JS 对象（React element）：
+
+```js
+// <div>{count}</div>  编译后：
+{ type: 'div', props: { children: count }, key: null, ref: null }
+```
+
+所以 Hook 返回 JSX，调用方拿到的只是一个对象，还没有被渲染。调用方必须把它放进自己的 JSX 中，React 才会渲染它。
+
+### 4.3 两者的实际区别
+
+| | 返回普通值 | 返回 JSX |
+|---|---|---|
+| re-render 行为 | 相同 | 相同 |
+| state 归属 | 调用方 Fiber | 调用方 Fiber（完全一样）|
+| 调用方的灵活性 | 拿到数据，自由决定如何渲染 | 只能原样使用，无法定制 UI |
+| 职责分离 | Hook 管数据，组件管 UI（推荐）| 数据和 UI 耦合在 Hook 里（反模式）|
+
+---
+
+## 五、组件 vs Hook：调用形式决定一切
+
+### 5.1 React 如何区分两者
+
+React **不看函数名**，也不看返回值类型，只看**调用形式**：
+
+```tsx
+// 调用形式 1：JSX 标签语法
+<MyComponent />
+// React 为它创建独立的 Fiber 节点
+// 内部的 useState 挂在这个新 Fiber 上
+
+// 调用形式 2：普通函数调用
+const result = myFunction();
+// 没有新 Fiber
+// 内部的 useState 挂在当前正在渲染的组件的 Fiber 上
+```
+
+**这一条规则解释了所有行为。**
+
+### 5.2 同一个函数，两种调用，完全不同的行为
+
+假设有这样一个函数：
+
+```tsx
+const Counter = () => {
+  const [count, setCount] = useState(0);
+  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+};
+```
+
+**用法 A：作为组件使用**
+
+```tsx
+const App = () => {
+  return <Counter />; // React 创建 Counter 自己的 Fiber
+};
+// 点击按钮 → Counter 的 Fiber 上的 state 变化 → Counter re-render
+// App 不 re-render
+```
+
+**用法 B：作为 Hook 调用**（虽然不推荐，但能工作）
+
+```tsx
+const App = () => {
+  const element = Counter(); // 普通函数调用，state 挂在 App 的 Fiber 上
+  return element;
+};
+// 点击按钮 → App 的 Fiber 上的 state 变化 → App re-render
+// 没有 Counter 自己的 Fiber
+```
+
+两者行为完全不同，即使代码是同一个函数。
+
+### 5.3 为什么 Hook 必须以 `use` 开头
+
+这只是 **ESLint 规则（`react-hooks/rules-of-hooks`）**的约定，React 运行时本身不检查名字。
+
+`use` 前缀的意义：
+1. 告诉 ESLint 插件对这个函数执行 Hook 规则检查（不能在条件/循环中调用 Hook）
+2. 告诉其他开发者"这个函数里面有 Hook，别直接用 `<UseXxx />` 的方式调用"
+
+---
+
+## 六、发布-订阅模式（Pub-Sub）与 React 的结合
+
+`useMerchantFields` 实现的是一个经典的 **"外部 store + React 订阅"** 模式。
+
+### 6.1 为什么不用 Redux 或 Context
+
+`cache` 完全可以放进 Redux store 或 React Context，但这里选择了模块级变量 + Pub-Sub，原因：
+
+- **更轻**：不需要 Provider 包裹，不引入 Redux 依赖
+- **更快**：直接读取模块变量，没有 Context 穿透的 re-render 开销
+- **字段配置是应用级单例**：它的生命周期和整个应用一样长，天然适合模块变量
+
+### 6.2 这个模式的通用结构
+
+```ts
+// 1. 外部 store（模块变量）
+let store = initialState;
+
+// 2. 订阅者集合
+const subscribers = new Set<() => void>();
+
+// 3. 更新 store 并通知
+const updateStore = (newState) => {
+  store = newState;
+  subscribers.forEach(fn => fn()); // notify
+};
+
+// 4. React Hook 桥接
+const useStore = () => {
+  const [state, setState] = useState(store);
+
+  useEffect(() => {
+    const listener = () => setState(store); // 把外部变化桥接到 React state
+    subscribers.add(listener);
+    return () => subscribers.delete(listener); // 卸载时清理
+  }, []);
+
+  return state;
+};
+```
+
+这正是 `useMerchantFields.ts` 的骨架。React 官方的 `useSyncExternalStore`（React 18 新增）就是对这个模式的官方封装。
+
+### 6.3 并发请求去重
+
+`useMerchantFields.ts` 还解决了一个实际问题：多个组件同时挂载时，可能同时触发相同的 API 请求。
+
+```ts
+// useMerchantFields.ts:272
+const pendingByKey: Map<string, Promise<void>> = new Map();
+
+// useMerchantFields.ts:350-355
+const fetchMain = (pageCode, componentCode?) => {
+  const key = makePendingKey(pageCode, componentCode);
+  const existing = pendingByKey.get(key);
+  if (existing) {
+    return existing; // 已有进行中的请求，直接复用同一个 Promise
+  }
+  // ...发起新请求
+};
+```
+
+`pendingByKey` 是一个以"请求标识"为 key 的 Map，确保相同参数的请求只发出一次，后来的调用方复用同一个 Promise。请求完成后，`pendingByKey.delete(key)`（第 391 行）清除记录，允许未来重新拉取。
+
+---
+
+## 七、MerchantFieldsReady：把所有知识点串联起来
+
+```tsx
+// MerchantFieldsReady/index.tsx
+
+const MerchantFieldsReady: React.FC<{ children?: React.ReactNode }> = (props) => {
+  const { pathname } = useLocation();
+
+  // 1. 根据路由计算需要的 (pageCode, componentCodes)
+  const fieldConfig = useMemo(() => resolveFieldConfig(pathname), [pathname]);
+
+  // 2. 订阅全局缓存，缓存更新时触发 re-render
+  //    注意：没有参数，只是为了订阅，不取具体 fields
+  useMerchantFields();
+
+  // 3. 检查所需配置是否已在缓存中就绪
+  const ready =
+    !fieldConfig ||
+    fieldConfig.componentCodes.length === 0 ||
+    fieldConfig.componentCodes.every((code) =>
+      hasMerchantFieldsCache(fieldConfig.pageCode, code)
+    );
+
+  // 4. 未就绪则触发预拉取
+  useEffect(() => {
+    if (!fieldConfig || ready) return;
+    fieldConfig.componentCodes.forEach((code) => {
+      if (!hasMerchantFieldsCache(fieldConfig.pageCode, code)) {
+        prefetchMerchantFields(fieldConfig.pageCode, code);
+      }
+    });
+  }, [fieldConfig, ready]);
+
+  // 5. 守卫：未就绪显示 Loading，就绪后渲染子树
+  if (!ready) return <PageLoading />;
+  return <>{props.children}</>;
+};
+```
+
+**第 2 步是关键**：`useMerchantFields()` 不带任何参数，不取 `fields` 数据，纯粹是为了**订阅缓存**。当 `notify()` 触发时，这个组件 re-render，第 3 步的 `ready` 重新计算，从 `false` 变为 `true`，组件从 `<PageLoading />` 切换到 `{children}`。
+
+---
+
+## 八、总结：五条核心规律
+
+1. **state 属于 Fiber，不属于函数**：`useState` 的值存在组件的 Fiber 节点上，函数执行结束后状态依然保留。
+
+2. **Hook 只是普通函数**：自定义 Hook 没有魔法，它里面的 `useState`/`useEffect` 都挂在调用它的组件的 Fiber 上。
+
+3. **调用形式决定一切**：`<Foo />` 创建新 Fiber（组件），`foo()` 使用当前 Fiber（Hook）。返回什么值与此无关。
+
+4. **外部 store 需要 Pub-Sub 桥接 React**：React 只感知自己管理的 state 变化，模块级变量变化必须通过 `setState` 通知 React，`listeners + notify` 模式就是这座桥。
+
+5. **订阅要配对清理**：`useEffect` 注册 listener，return 清理函数删除 listener，防止内存泄漏和在已卸载组件上 setState 报错。
