@@ -1,0 +1,156 @@
+---
+title: 日记：2026/06/28
+tags:
+  - 日记
+  - 学习
+  - JavaScript
+summary: 学习《现代 JavaScript 教程》call / bind / apply
+category: diary
+---
+
+# call / bind / apply 学习笔记
+
+## 一、三者对比总览
+
+| 方法 | 执行时机 | 传参方式 | 返回值 |
+|------|----------|----------|--------|
+| `call` | 立即执行 | 逐个传参 | 函数执行结果 |
+| `apply` | 立即执行 | 数组/类数组 | 函数执行结果 |
+| `bind` | 不执行 | 逐个传参 | 新函数 |
+
+**记忆口诀：Apply → Array（都以 A 开头）**
+
+---
+
+## 二、call
+
+```javascript
+func.call(context, arg1, arg2, ...)
+```
+
+- 立即调用 `func`，并将 `this` 设为 `context`
+- 参数逐个传入
+
+```javascript
+function say(greeting) {
+  console.log(greeting + this.name);
+}
+let user = { name: "张三" };
+
+say.call(user, "你好"); // "你好张三"
+```
+
+---
+
+## 三、apply
+
+```javascript
+func.apply(context, [arg1, arg2, ...])
+```
+
+- 与 `call` 完全相同，唯一区别是参数用**数组**传入
+- 传数组给 `call` 不会展开，整个数组算第一个参数
+
+```javascript
+say.apply(user, ["你好"]); // "你好张三"
+say.call(user, ["你好"]);  // "你好，undefined张三" ← 错误用法
+```
+
+---
+
+## 四、bind
+
+```javascript
+let newFunc = func.bind(context, arg1, arg2, ...)
+```
+
+- **不立即执行**，返回一个 `this` 永久锁定的新函数
+- 核心场景：把对象方法作为回调传递时防止 `this` 丢失
+
+```javascript
+let user = {
+  name: "张三",
+  greet() { console.log("你好，" + this.name); }
+};
+
+// this 丢失：
+setTimeout(user.greet, 1000);           // "你好，"（this = window）
+
+// bind 修复：
+setTimeout(user.greet.bind(user), 1000); // "你好，张三" ✅
+```
+
+---
+
+## 五、this 丢失的根本原因
+
+```javascript
+let f = user.greet;  // 函数引用与对象脱钩
+f();                 // 普通函数调用，this = window（严格模式为 undefined）
+```
+
+方法被"摘下来"单独调用时，`this` 就丢了。解决方案：
+- 用 `bind` 永久锁定 `this`
+- 用 `call/apply` 在调用时临时指定 `this`
+- 用箭头函数包一层（继承外层 `this`）
+
+---
+
+## 六、装饰器中用 call 传递 this
+
+```javascript
+function cachingDecorator(func) {
+  let cache = new Map();
+  return function(x) {
+    if (cache.has(x)) return cache.get(x);
+    let result = func.call(this, x); // ← 关键：把包装函数的 this 传给原函数
+    cache.set(x, result);
+    return result;
+  };
+}
+```
+
+包装函数以 `worker.slow(2)` 调用时，`this = worker`，用 `func.call(this, x)` 把它传进去。
+
+---
+
+## 七、方法借用
+
+```javascript
+function hash() {
+  return [].join.call(arguments, ",");
+}
+hash(1, 2, 3); // "1,2,3"
+```
+
+`arguments` 是类数组（有 `length` 和数字下标），`join` 内部只依赖这两点，所以可以借用。
+
+---
+
+## 八、偏函数（Partial Application）⚠️ 易错
+
+```javascript
+function mul(a, b) { return a * b; }
+
+let double = mul.bind(null, 2);
+// null = 不关心 this
+// 2 = 预锁定第一个参数 a=2
+
+double(3); // → mul(2, 3) → 6 ✅
+double(5); // → mul(2, 5) → 10 ✅
+```
+
+> **易错点**：`bind(null, 2)` 里的 `2` 不是传给 `double` 的参数，而是预填进 `mul` 的第一个参数。调用 `double(x)` 时，`x` 顺位填入第二个参数。
+
+---
+
+## 九、记忆框架
+
+```
+需要立即执行？
+  ├── 是 → 用 call 或 apply
+  │         参数是数组？用 apply（A→Array）
+  │         参数是逐个？用 call
+  └── 否 → 用 bind（返回新函数，this 永久锁定）
+                还想预锁定参数？bind 第二个参数起传入即可
+```
