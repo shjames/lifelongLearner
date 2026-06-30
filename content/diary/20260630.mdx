@@ -1,0 +1,320 @@
+# 哈希映射与数组变换：从一段业务代码说起
+
+> 起源：在 kpay-crm-web 项目中，新建分店时需要把父商户的旧 SME 产品状态，与接口返回的最新渠道产品列表合并。这段代码涉及几个经典的算法思想，值得仔细拆解。
+
+---
+
+## 一、被分析的代码
+
+```ts
+if (res.success) {
+  const parentChannelMap = keyBy(merchantInfo.merchantSmeProductList, 'channelId');
+
+  const merged = res.data.map((channel: any) => {
+    const parentChannel = parentChannelMap[channel.channelId];
+    const parentProductMap = keyBy(parentChannel?.smeProductList || [], 'productCode');
+
+    return {
+      ...channel,
+      smeProductList: channel.smeProductList.map((productCode: string) => ({
+        productCode,
+        state: parentProductMap[productCode]?.state ?? MINI_MHCT_STATE_TEXT.NOT_OPEN_ACCESS,
+      })),
+    };
+  });
+
+  setMerchantSmeProductList(merged);
+  formInstance!.setFieldsValue({ merchantSmeProductList: merged });
+}
+```
+
+---
+
+## 二、`keyBy` 的底层实现
+
+`keyBy` 来自 lodash，作用是把一个数组按某个字段转成「字典（对象）」。
+
+### lodash 源码简化版
+
+```js
+function keyBy(array, key) {
+  return array.reduce((result, item) => {
+    // 取出每个元素的 key 字段值，作为字典的 key
+    result[item[key]] = item;
+    return result;
+  }, {});
+}
+```
+
+### 示例
+
+```js
+const products = [
+  { productCode: 'Visa',       state: 2 },
+  { productCode: 'MasterCard', state: 1 },
+  { productCode: 'UNIONPAY',   state: 2 },
+];
+
+const map = keyBy(products, 'productCode');
+// 结果：
+// {
+//   "Visa":       { productCode: "Visa",       state: 2 },
+//   "MasterCard": { productCode: "MasterCard", state: 1 },
+//   "UNIONPAY":   { productCode: "UNIONPAY",   state: 2 }
+// }
+
+// 现在可以 O(1) 查找任意产品
+console.log(map['Visa'].state); // 2
+```
+
+### 底层数据结构：哈希表（Hash Table）
+
+`keyBy` 本质上是在构建一个**哈希表**。JavaScript 的普通对象 `{}` 在 V8 引擎内部就是用哈希表实现的。
+
+哈希表的核心思想：
+1. 用一个**哈希函数**把 key（字符串）转换成数组下标
+2. 把 value 存在这个下标对应的位置
+3. 查找时同样用哈希函数算出下标，直接取值 → **O(1) 时间**
+
+```
+key: "Visa"
+   ↓  hash("Visa") = 42
+   ↓
+数组[42] = { productCode: "Visa", state: 2 }
+
+查找 map["Visa"]：
+   ↓  hash("Visa") = 42
+   ↓
+直接返回 数组[42]  → O(1)
+```
+
+---
+
+## 三、核心算法思想：用空间换时间
+
+这段代码最重要的思想是**以空间换时间（Space-Time Tradeoff）**。
+
+### 问题：找到父商户里对应产品的 state
+
+原始数据：
+```
+新渠道产品列表（字符串数组）：["Visa", "MasterCard", "UNIONPAY", "JCB · Diners Club · Discover"]
+父商户产品列表（对象数组）：  [{ productCode:"Visa", state:2 }, { productCode:"MasterCard", state:1 }, ...]
+```
+
+**朴素方案（双重循环，O(n²)）：**
+
+```js
+const merged = newProducts.map((productCode) => {
+  // 每次都要遍历父商户列表，找到匹配项
+  const found = parentProducts.find((p) => p.productCode === productCode);
+  return {
+    productCode,
+    state: found?.state ?? NOT_OPEN_ACCESS,
+  };
+});
+```
+
+时间复杂度：外层 map 遍历 n 个新产品，内层 find 最坏遍历 m 个父商户产品 → **O(n × m)**。
+
+当 n=4, m=3 时感觉无所谓，但如果是 1000 × 1000，就是 100 万次操作。
+
+---
+
+**优化方案（先建哈希表，再 O(1) 查找）：**
+
+```js
+// 第一步：遍历一次父商户列表，建立哈希表 → O(m)
+const parentProductMap = keyBy(parentProducts, 'productCode');
+// {
+//   "Visa":       { productCode: "Visa",       state: 2 },
+//   "MasterCard": { productCode: "MasterCard", state: 1 },
+//   "UNIONPAY":   { productCode: "UNIONPAY",   state: 2 }
+// }
+
+// 第二步：遍历新产品，每次查找都是 O(1) → O(n)
+const merged = newProducts.map((productCode) => {
+  return {
+    productCode,
+    state: parentProductMap[productCode]?.state ?? NOT_OPEN_ACCESS,
+  };
+});
+```
+
+| 方案 | 时间复杂度 | 空间复杂度 |
+|---|---|---|
+| 双重循环 | O(n × m) | O(1) |
+| 先建哈希表 | O(n + m) | O(m) |
+
+**用了 O(m) 的额外空间（存哈希表），把时间从 O(n×m) 降到 O(n+m)。这就是「空间换时间」。**
+
+---
+
+## 四、两级哈希表嵌套（两层索引）
+
+这段代码建了**两层哈希表**，分别解决两个查找问题：
+
+```
+第一层：按 channelId 查找渠道
+parentChannelMap = keyBy(merchantSmeProductList, 'channelId')
+  → { "517625...": { channelId, smeProductList: [...] } }
+
+第二层：在某个渠道内按 productCode 查找产品
+parentProductMap = keyBy(parentChannel.smeProductList, 'productCode')
+  → { "Visa": { productCode, state }, "MasterCard": { ... } }
+```
+
+类比**二级索引**：就像数据库先按省份索引、再按城市索引，两次 O(1) 查找，代替两层嵌套循环。
+
+```js
+// 没有两层哈希表的朴素写法：O(channels × products)
+res.data.forEach((channel) => {
+  const parentChannel = merchantSmeProductList.find(
+    (c) => c.channelId === channel.channelId   // O(channels)
+  );
+  channel.smeProductList.forEach((productCode) => {
+    const found = parentChannel?.smeProductList.find(
+      (p) => p.productCode === productCode      // O(products)
+    );
+  });
+});
+
+// 两层哈希表的写法：O(channels + products)
+const parentChannelMap = keyBy(merchantSmeProductList, 'channelId');
+res.data.forEach((channel) => {
+  const parentChannel = parentChannelMap[channel.channelId];         // O(1)
+  const parentProductMap = keyBy(parentChannel?.smeProductList, 'productCode');
+  channel.smeProductList.forEach((productCode) => {
+    const found = parentProductMap[productCode];                     // O(1)
+  });
+});
+```
+
+---
+
+## 五、`Array.map`：函数式变换
+
+```ts
+const merged = res.data.map((channel: any) => {
+  return {
+    ...channel,
+    smeProductList: channel.smeProductList.map((productCode: string) => ({
+      productCode,
+      state: parentProductMap[productCode]?.state ?? NOT_OPEN_ACCESS,
+    })),
+  };
+});
+```
+
+`map` 是**函数式编程**中的核心操作：**输入数组 → 变换每个元素 → 输出新数组**，不修改原数组。
+
+```
+输入：["Visa", "MasterCard", "UNIONPAY", "JCB · Diners Club · Discover"]
+变换：每个 productCode → { productCode, state }
+输出：[{ productCode:"Visa", state:2 }, { productCode:"MasterCard", state:1 }, ...]
+```
+
+这里有两个嵌套 `map`：
+- 外层 `map`：遍历渠道列表，每个渠道生成新对象
+- 内层 `map`：遍历产品列表，每个 productCode 字符串转成 `{ productCode, state }` 对象
+
+---
+
+## 六、对象展开运算符（Spread）
+
+```ts
+return {
+  ...channel,                // 保留渠道的所有原始字段（channelId, channelShortName 等）
+  smeProductList: [...],     // 只覆盖 smeProductList 这一个字段
+};
+```
+
+等价于：
+```js
+return Object.assign({}, channel, { smeProductList: [...] });
+```
+
+作用：**浅拷贝 + 局部覆盖**，不改变原对象，生成一个新对象。这是 React 不可变数据（Immutable）的核心写法——永远不直接修改原数据，而是生成新对象。
+
+---
+
+## 七、空值合并运算符 `??`
+
+```ts
+parentProductMap[productCode]?.state ?? MINI_MHCT_STATE_TEXT.NOT_OPEN_ACCESS
+```
+
+分解：
+
+```ts
+parentProductMap[productCode]   // 如果 productCode 不在父商户里，返回 undefined
+  ?.state                       // 可选链：undefined?.state → 不报错，直接返回 undefined
+  ?? NOT_OPEN_ACCESS            // 空值合并：左边是 undefined 或 null 时，取右边的值
+```
+
+| 情况 | 结果 |
+|---|---|
+| `productCode = "Visa"`（父商户有）| `2`（不开通，保留父商户状态） |
+| `productCode = "JCB..."`（父商户没有）| `NOT_OPEN_ACCESS`（新产品默认不开通） |
+
+**`??` 与 `\|\|` 的区别：**
+```js
+// ||：左边是任何 falsy 值（0, "", false, null, undefined）都取右边
+0 || 42      // → 42  ← 错误！state=0 有业务含义却被替换了
+
+// ??：只有左边是 null 或 undefined 才取右边
+0 ?? 42      // → 0   ← 正确！0 是有效值，保留
+```
+
+这里用 `??` 而不是 `||`，是因为 `state` 的值 `0` 在某些情况下是有效的业务值，不能被误替换。
+
+---
+
+## 八、完整流程图
+
+```
+merchantInfo.merchantSmeProductList（父商户，3 个产品）
+        │
+        ▼
+keyBy(..., 'channelId')
+        │
+        ▼
+parentChannelMap = { "517625...": { smeProductList: [Visa, MasterCard, UNIONPAY] } }
+        │
+        │           res.data（接口最新数据，4 个产品）
+        │                    │
+        ▼                    ▼
+    res.data.map((channel) => {
+        parentChannel = parentChannelMap[channel.channelId]   ← O(1) 查渠道
+        parentProductMap = keyBy(parentChannel.smeProductList, 'productCode')
+                                                               ← O(m) 建产品索引
+        return {
+          ...channel,
+          smeProductList: channel.smeProductList.map((productCode) => ({
+            productCode,
+            state: parentProductMap[productCode]?.state ?? NOT_OPEN_ACCESS
+                                                           ← O(1) 查产品状态
+          }))
+        }
+    })
+        │
+        ▼
+merged（4 个产品，JCB 默认不开通）
+        │
+        ├── setMerchantSmeProductList(merged)   → 更新 React state，触发重渲染
+        └── formInstance.setFieldsValue(...)    → 更新表单存储，保证提交数据正确
+```
+
+---
+
+## 九、总结：涉及的算法与概念
+
+| 概念 | 在代码中的体现 | 核心价值 |
+|---|---|---|
+| **哈希表** | `keyBy` 构建字典 | O(1) 查找 |
+| **空间换时间** | 先建两级哈希表再遍历 | O(n²) → O(n+m) |
+| **函数式变换** | `Array.map` | 不可变数据，生成新数组 |
+| **两级索引** | channel → product 嵌套 `keyBy` | 替代双重嵌套循环 |
+| **对象展开** | `...channel` 浅拷贝 | 局部覆盖，保留原字段 |
+| **空值合并** | `??` 提供默认值 | 区分「无数据」和「值为0」 |
+| **可选链** | `?.state` | 安全访问，避免 undefined 报错 |
