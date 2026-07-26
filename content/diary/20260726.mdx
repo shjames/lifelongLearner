@@ -1,0 +1,163 @@
+---
+title: 日记：2026/07/26
+tags:
+  - 日记
+  - 学习
+  - 微前端
+  - 架构
+summary: 微前端沙箱隔离原理与 micro-app 子应用渲染机制
+category: diary
+---
+
+# 微前端沙箱隔离原理
+
+## 一、JS 沙箱隔离：简易实现
+
+核心思路：用 `Proxy` 代理 `window`，让子应用的变量写入自己的作用域，不污染真实 `window`。
+
+```js
+// ── 沙箱类 ──────────────────────────────────────────────────
+class SandBox {
+  // 子应用自己的变量作用域
+  childScope = {};
+  // 沙箱激活状态
+  active = false;
+  // 代理后的假 window
+  fakeWindow;
+
+  constructor(appName) {
+    this.appName = appName;
+
+    this.fakeWindow = new Proxy(window, {
+      get: (target, key) => {
+        // 优先从子应用自己的作用域取
+        if (key in this.childScope) {
+          return this.childScope[key];
+        }
+        // 找不到再去真实 window 取
+        return target[key];
+      },
+
+      set: (target, key, value) => {
+        if (this.active) {
+          // 沙箱激活时，变量只写入子应用作用域
+          this.childScope[key] = value;
+        } else {
+          target[key] = value;
+        }
+        return true;
+      },
+
+      has: (target, key) => {
+        // 让 with 语句能正确判断变量是否存在
+        return key in this.childScope || key in target;
+      },
+    });
+  }
+
+  // 激活沙箱（子应用挂载时调用）
+  mount() {
+    this.active = true;
+    console.log(`[${this.appName}] 沙箱已激活`);
+  }
+
+  // 卸载沙箱（子应用卸载时调用）
+  unmount() {
+    this.active = false;
+    // 清空子应用作用域，真实 window 毫发无损
+    this.childScope = {};
+    console.log(`[${this.appName}] 沙箱已卸载，作用域已清空`);
+  }
+
+  // 在沙箱内执行代码
+  execScript(code) {
+    // 用 with 把 fakeWindow 注入为代码的全局作用域
+    // 子应用代码里的 window.xxx 实际访问的是 fakeWindow
+    const fn = new Function('window', `with(window) { ${code} }`);
+    fn(this.fakeWindow);
+  }
+}
+
+// ── CSS 隔离：给子应用样式加 scope 前缀 ─────────────────────
+function scopeCSS(cssText, appName) {
+  return cssText.replace(/([^{}]+)\{/g, (match, selector) => {
+    const scoped = selector
+      .split(',')
+      .map((s) => `micro-app[name=${appName}] ${s.trim()}`)
+      .join(', ');
+    return `${scoped} {`;
+  });
+}
+
+// ── 使用示例 ─────────────────────────────────────────────────
+const sandbox = new SandBox('bi-report');
+sandbox.mount();
+
+// 子应用设置全局变量
+sandbox.execScript(`window.myVar = 'hello from bi-report'`);
+
+// 验证隔离效果
+console.log(sandbox.childScope.myVar); // 'hello from bi-report'
+console.log(window.myVar);             // undefined ← 真实 window 未被污染
+
+sandbox.unmount();
+console.log(sandbox.childScope.myVar); // undefined ← 卸载后作用域清空
+
+// CSS 隔离示例
+const rawCSS = `.button { color: red; } .title { font-size: 16px; }`;
+const scopedCSS = scopeCSS(rawCSS, 'bi-report');
+console.log(scopedCSS);
+// micro-app[name=bi-report] .button { color: red; }
+// micro-app[name=bi-report] .title { font-size: 16px; }
+```
+
+---
+
+## 二、micro-app 如何在基座内渲染子应用
+
+### 普通浏览器 vs micro-app 的区别
+
+普通在浏览器输入 URL，浏览器会：
+
+1. 发请求拿到 HTML
+2. 解析 HTML，遇到 `<script>` 下载执行 JS
+3. 遇到 `<link>` 下载执行 CSS
+4. 在整个 document 里渲染
+
+这个过程是**浏览器接管的**，所有资源直接在当前 document 里运行。
+
+micro-app 要在基座页面内嵌入子应用，不能让子应用资源直接跑在当前 document（会污染），所以自己接管这个过程：
+
+```
+<micro-app name="bi" url="http://bi.test.kpay-test.com">
+  ↓
+micro-app 自定义元素 connectedCallback 触发
+  ↓
+fetch('http://bi.test.kpay-test.com')  ← 主动用 fetch 拿 HTML，不是浏览器导航
+  ↓
+拿到 HTML 字符串，自己解析
+  ↓
+提取所有 <script src="xxx"> → fetch 下载 JS 内容（得到字符串）
+提取所有 <link href="xxx"> → fetch 下载 CSS 内容（得到字符串）
+  ↓
+JS：new Function + with(fakeWindow) 在沙箱里执行（不用 <script> 标签注入）
+CSS：scopeCSS 加前缀后，动态创建 <style> 标签插入当前 document
+  ↓
+子应用 React 代码执行，把自己的 DOM 渲染到 <micro-app> 标签内部
+```
+
+### 为什么不用 iframe？
+
+| | iframe | micro-app |
+|---|---|---|
+| 隔离性 | 天然隔离，但太彻底 | 可控隔离，可以通信 |
+| 通信 | 只能 postMessage，繁琐 | 直接 setGlobalData，简单 |
+| 样式共享 | 无法共享主应用样式 | 可以选择性共享 |
+| URL 同步 | 子应用路由不同步到主应用地址栏 | 可以同步 |
+| 性能 | 每个 iframe 独立渲染进程 | 共享主应用渲染进程 |
+
+**一句话总结**：micro-app 用 `fetch` 替代浏览器的资源加载，用 `Proxy` 替代原生 `window`，用自定义元素替代 `iframe`，在保持隔离的同时获得更好的通信能力和性能。
+
+---
+
+*写于 2026-07-26，结合 kpay-crm-web 微前端架构学习整理。*
