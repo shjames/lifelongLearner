@@ -1,0 +1,160 @@
+---
+title: 日记：2026/08/01
+tags:
+  - 日记
+  - 学习
+  - JavaScript
+summary: 学习《现代 JavaScript 教程》原生原型：Array/Object toString 区别，函数原型链结构
+category: diary
+---
+
+# 原生原型：toString、函数原型链、内建对象结构
+
+## 一、函数本身的原型链
+
+`Array`、`Object` 等内建构造函数本身是**函数**，函数的 `[[Prototype]]` 指向 `Function.prototype`：
+
+```javascript
+Array.__proto__ === Function.prototype    // true
+Object.__proto__ === Function.prototype   // true
+Function.__proto__ === Function.prototype // true（Function 自身也是函数）
+
+Function.prototype.__proto__ === Object.prototype // true
+```
+
+---
+
+## 二、`Array.toString` vs `Array.prototype.toString`
+
+```javascript
+Array.toString === Array.prototype.toString // false，完全不同的两个函数
+```
+
+| | 来源 | 给谁用 | 输出什么 |
+|---|---|---|---|
+| `Array.toString` | 继承自 `Function.prototype.toString` | 把 `Array` 函数本身转字符串 | `"function Array() { [native code] }"` |
+| `Array.prototype.toString` | `Array` 自己定义的 | 给**数组实例**用 | `"1,2,3"` |
+| `Object.toString` | 继承自 `Function.prototype.toString` | 把 `Object` 函数本身转字符串 | `"function Object() { [native code] }"` |
+| `Object.prototype.toString` | 挂在 `Object.prototype` 上 | 给**所有普通对象**用 | `"[object Object]"` |
+
+```javascript
+Array.toString();                           // "function Array() { [native code] }"
+Array.prototype.toString.call([1,2,3]);     // "1,2,3"
+Object.toString();                          // "function Object() { [native code] }"
+Object.prototype.toString.call({});         // "[object Object]"
+```
+
+---
+
+## 三、`[native code]` 是什么意思
+
+表示这个函数是用 C++ 在引擎内部实现的，没有 JS 源码，引擎用 `[native code]` 占位。
+
+```javascript
+// 普通函数，有源码：
+function add(a, b) { return a + b; }
+add.toString(); // "function add(a, b) { return a + b; }"
+
+// 内建函数，无源码：
+Array.toString(); // "function Array() { [native code] }"
+```
+
+---
+
+## 四、为什么 `[1,2,3].toString()` 和 `({}).toString()` 结果不一样
+
+两者调用的不是同一个 `toString` 方法：
+
+```javascript
+[1,2,3].toString() // "1,2,3"
+// 沿原型链找到 Array.prototype.toString，Array 重写了这个方法
+
+({}).toString()    // "[object Object]"
+// 沿原型链找到 Object.prototype.toString，普通对象没有重写
+```
+
+原型链查找就近原则——`Array.prototype` 比 `Object.prototype` 更近，所以数组优先用 `Array.prototype.toString`，不会走到 `Object.prototype.toString`。
+
+---
+
+## 五、`({}).toString === Object.prototype.toString`
+
+```javascript
+({}).toString === Object.prototype.toString // true
+```
+
+`{}` 自身没有 `toString`，沿原型链找到 `Object.prototype.toString`，所以两者是同一个函数引用。
+
+---
+
+**口诀：`Array.toString` 是函数源码；`Array.prototype.toString` 是数组内容；两者不是同一个东西**
+
+---
+
+## 六、包装对象的临时性 ⚠️ 易错
+
+原始类型调用方法时，引擎临时创建包装对象，用完即销毁。**属性无法挂在原始类型上**：
+
+```javascript
+const str = "hello";
+str.custom = "test";
+// 引擎做了：
+// 1. 创建临时 temp = new String("hello")
+// 2. temp.custom = "test"
+// 3. temp 立即销毁
+
+console.log(str.custom); // undefined ← 不是 "test"！
+// 引擎又创建了一个新的临时包装对象，custom 不在上面
+```
+
+**想持久保存属性，只能用对象：**
+
+```javascript
+const str = new String("hello"); // 显式创建包装对象
+str.custom = "test";
+console.log(str.custom); // "test" ✅
+
+// 但注意：
+typeof str;        // "object"，不是 "string"
+str === "hello";   // false，有坑，实际开发不推荐
+```
+
+**设计目的：** 让原始类型能方便调用方法（`"hello".toUpperCase()`），同时底层存储仍是原始值，不浪费内存。用起来像对象，存储上是原始值。
+
+---
+
+## 七、普通字典对象的暗坑：`__proto__` 作为 key ⚠️ 易错
+
+`__proto__` 不是普通数据属性，是 `Object.prototype` 上的 getter/setter，赋值字符串会被静默忽略：
+
+```javascript
+let obj = {};
+let key = "__proto__";
+obj[key] = "hello";
+console.log(obj[key]); // Object.prototype，不是 "hello"！
+// 赋值 "hello" 被忽略，因为 __proto__ 的 setter 只接受对象或 null
+// 读取时触发 getter，返回 obj 的原型
+```
+
+**解决方案1：使用 `Object.create(null)`**
+```javascript
+let pure = Object.create(null);
+pure["__proto__"] = "hello";
+console.log(pure["__proto__"]); // "hello" ✅
+// pure 没有继承 Object.prototype，__proto__ 只是普通属性名
+```
+
+**解决方案2：使用 Map**
+```javascript
+let map = new Map();
+map.set("__proto__", "hello");
+console.log(map.get("__proto__")); // "hello" ✅
+```
+
+**`Object.create(null)` 建的对象是真正的空对象：**
+```javascript
+const pure = Object.create(null);
+Object.getPrototypeOf(pure); // null，没有原型链
+pure.__proto__;              // undefined，没有 __proto__ getter/setter
+pure.toString;               // undefined，没有任何继承方法
+```

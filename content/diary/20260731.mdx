@@ -1,0 +1,79 @@
+---
+title: 日记：2026/07/31
+tags:
+  - 日记
+  - 学习
+  - JavaScript
+summary: 学习《现代 JavaScript 教程》原型三要素：[[Prototype]]、__proto__、F.prototype
+category: diary
+---
+
+# `[[Prototype]]`、`__proto__`、`F.prototype` 三者区别
+
+## 一、三者对比总览
+
+| | 是什么 | 在谁身上 | 能否直接用 JS 访问 | 作用 |
+|---|---|---|---|---|
+| `[[Prototype]]` | 引擎内部隐藏槽 | **每个对象**都有 | ❌ 不能直接访问 | 原型链查找时引擎内部使用 |
+| `__proto__` | `[[Prototype]]` 的读写入口 | **每个对象**都有 | ✅ 可以访问 | 让开发者能读写 `[[Prototype]]` |
+| `F.prototype` | 函数的一个普通属性 | **函数**特有 | ✅ 可以访问 | `new F` 时赋给新对象的 `[[Prototype]]` |
+
+---
+
+## 二、`__proto__` 和 `[[Prototype]]` 的关系
+
+两者在功能上是同一个东西：
+- `[[Prototype]]` 是语言规范层面的内部实现，引擎专用，JS 代码无法直接访问
+- `__proto__` 是暴露给外部的操作接口，本质是 `[[Prototype]]` 的 getter/setter
+
+```javascript
+const obj = {};
+const proto = { name: 'proto' };
+
+obj.__proto__ = proto;
+// 等价于在引擎内部设置 obj.[[Prototype]] = proto
+
+Object.getPrototypeOf(obj) === proto; // true（现代推荐写法）
+```
+
+---
+
+## 三、`F.prototype` 是函数特有的
+
+普通对象没有 `prototype` 属性（除非手动添加，但那只是普通属性，无任何特殊含义）。函数在**声明时**就自动拥有 `prototype` 属性。
+
+```javascript
+function Rabbit() {}
+console.log(Rabbit.prototype); // { constructor: Rabbit }，函数声明时就存在
+
+const obj = {};
+console.log(obj.prototype); // undefined，普通对象没有
+```
+
+---
+
+## 四、`new F()` 时发生了什么
+
+```javascript
+function Rabbit(name) { this.name = name; }
+Rabbit.prototype = { eats: true };
+
+const rabbit = new Rabbit('白兔');
+// 引擎做了：
+// 1. 创建新对象 rabbit
+// 2. rabbit.[[Prototype]] = Rabbit.prototype  ← 这一步
+// 3. 执行构造函数体，this = rabbit
+
+rabbit.__proto__ === Rabbit.prototype; // true
+rabbit.eats; // true，通过原型链找到
+```
+
+**结论：`Rabbit.prototype` 是模板，`rabbit.__proto__`（即 `[[Prototype]]`）是实例身上的结果。**
+
+---
+
+## 五、常见误区
+
+`obj.prototype` 这个说法本身有问题——普通对象没有 `prototype` 属性，与其对应的是 `obj.__proto__`（外部访问）或 `obj.[[Prototype]]`（引擎内部）。只有函数才有 `prototype` 属性。
+
+**口诀：对象用 `__proto__`；函数用 `prototype`；引擎内部叫 `[[Prototype]]`**
