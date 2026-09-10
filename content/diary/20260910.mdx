@@ -1,0 +1,231 @@
+---
+title: 日记：2026/09/10
+tags:
+  - 日记
+  - 技术
+  - Java
+  - 英语
+summary: Java 开发高频英文词汇手册（场景版）
+category: diary
+---
+
+# Java 开发高频英文词汇手册(场景版)
+
+> 面向前端转 Java 的开发者,全部词汇按**固定出现场景**分组。
+> 原则:**不背孤词**。每个词给"出现位置 + 典型句子 + 中文含义 + 本项目实例"。
+> 你在 IDE、控制台、日志、报错里看到哪个词,就翻到对应场景。
+
+---
+
+## 场景 1:报错信息的动词与名词(每天看到 30 次)
+
+| 词汇 | 出现位置 | 中文含义 | 典型句子(中英对照) |
+|---|---|---|---|
+| **exception** | `java.lang.NullPointerException` | 异常 | *"Null pointer exception occurred"* — 空指针异常发生了 |
+| **throw** | 代码里 `throw new ApiException(400, ...)` | 抛出(异常) | *"This method may throw an exception"* — 这个方法可能抛出异常 |
+| **stack trace** | 报错头部 | 栈轨迹(调用链) | *"Check the stack trace for the root cause"* — 看栈轨迹找根本原因 |
+| **at** | `at com.zero.server.RecordService.java:52` | 位于(栈帧标记) | *"The error is at line 52"* — 错误位于第 52 行 |
+| **caused by** | 栈底部 `Caused by:` | 由…引起 | *"Scroll to the bottom 'Caused by' line"* — 滚到最底下的 Caused by 行 |
+| **expected / actual** | JUnit 断言 | 期望值 / 实际值 | *"expected: 201 but was: 500"* — 期望 201 却得到 500 |
+| **could not be / failed to** | 报错消息 | 不能…/ 未能… | *"Could not be parsed at index 26"* — 在第 26 个字符处无法解析(本项目 Instant 报错原文) |
+| **cannot find symbol** | 编译报错 | 找不到符号 | *"cannot find symbol: variable list"* — 找不到变量 list(多半是拼写/import 问题) |
+| **incompatible types** | 编译报错 | 类型不兼容 | *"incompatible types: int cannot be converted to String"* — int 无法转 String |
+| **cannot be applied to** | 编译报错 | 不能用于(参数不匹配) | *"method create in class X cannot be applied to given types"* — 传入的参数和签名对不上 |
+| **illegal / invalid / missing** | 业务报错 | 非法的 / 无效的 / 缺失的 | *"Missing required fields: input_content"* — 缺少必填字段(本项目的 400 消息原文) |
+| **unsupported** | 框架报错 | 不支持的 | *"Unsupported media type"* — 请求头 Content-Type 不正确 |
+| **null / empty / blank** | 判空逻辑 | 空 / 空串 / 纯空格 | *"The list is null, must check before isEmpty()"* — 列表是 null,调用 isEmpty() 前要判空 |
+| **out of bounds** | 数组异常 | 越界 | *"Index 3 out of bounds for length 2"* — 下标 3 越界,长度只有 2 |
+| **locked / refused / timed out** | 资源异常 | 被锁 / 被拒 / 超时 | *"The file is locked: zero.mv.db"*(本项目 90149 案例)、*"Connection refused"*、*"Read timed out"* |
+
+**一句话技巧**:报错消息的语法结构通常是 `XXX cannot/does not ... because ...`。看到 `because` 前的动作、`because` 后的主语,就能复述问题。
+
+---
+
+## 场景 2:Maven 构建(每次 `mvnw` 都见)
+
+| 词汇 | 出现位置 | 中文含义 | 典型句子 |
+|---|---|---|---|
+| **compile** | 命令行 | 编译 | *"compiling 13 source files..."* — 正在编译 13 个源文件 |
+| **package** | 命令行 / pom 插件 | 打包 | *"BUILD SUCCESS in 4s"* / *"Maven packages your app into a jar"* |
+| **dependency** | pom | 依赖 | *"Adding dependency com.h2database:h2:2.3.232"* |
+| **resolve / downloaded** | 构建日志 | 解析 / 下载(依赖) | *"Resolving dependencies..."* — 正在解析依赖(首次构建会在网上下载) |
+| **repository** | 配置 | 仓库(中央仓库 / 私服) | *"Mirror repository: maven.aliyun.com"* — 国内换阿里云镜像源,就是改"仓库" |
+| **version / conflict** | 构建警告 | 版本 / 冲突 | *"Directly overriding version"* / *"Conflicting versions of slf4j-api"* — 两个库引入同名依赖不同版本 |
+| **phase / goal** | mvn 参数 | maven 生命周期阶段 / 插件目标 | *"mvn test is a phase; compiler:compile is a goal"* |
+| **success / failure** | 构建收尾 | 成功 / 失败 | *"BUILD SUCCESS"* / *"BUILD FAILURE"*(看见 failure 就往上找 `ERROR` 或 `error:` 行) |
+| **wrapper** | mvnw | 包装器(按版本引导 Maven) | *"mvnw.cmd test"* — 用包装器跑测试(官网下载对应 Maven,省得本机装) |
+| **shade** | pom 插件 | 把依赖打进同一个 jar(阴影) | *"maven-shade-plugin: repackages with dependencies"* — 本项目 jar 能独立 `java -jar` 运行全靠它 |
+| **artifact** | pom | 构件(构建结果,如 jar) | *"zero-server-1.0.0.jar"* 就是 artifactId=zero-server 的构件 |
+| **skip** | 参数 | 跳过 | *"-DskipTests"* — 跳过测试打包(偶尔用,别常用) |
+| **clean** | 参数 | 清理 | *"mvn clean"* — 删掉 target/ 重新构建;改不动依赖缓存时先 clean |
+
+---
+
+## 场景 3:Java 语言基础(读代码时见)
+
+| 词汇 | 含义 | 典型句子 | 记忆锚点 |
+|---|---|---|---|
+| **class** | 类 | *"public class RecordService"* — 定义类 | 前端类比:模块 + 类工厂 |
+| **field** | 字段(属性) | *"private final RecordRepository repository;"* | 前端类比:实例属性 |
+| **method** | 方法 | *"public LearningRecord create(...)"* | React 类比:组件里的函数 |
+| **parameter / argument** | 形参 / 实参 | *"parameter count mismatch"* | 形参=定义处,实参=调用处 |
+| **return** | 返回 | *"return repository.insert(record);"* | 层层返回(Controller ← Service ← Repository) |
+| **void** | 无返回值 | *"public void delete(...)"* | 只做动作,不传结果 |
+| **static** | 静态 | *"public static RecordService withFileDatabase()"* | 不 new 也能调用(`RecordService.withFileDatabase()`) |
+| **final** | 最终的 / 不可变 | *"private final Repository repository"* | 构造后不可再赋值,比 JS 的 const 更严格 |
+| **interface** | 接口 | *"RecordRepository"* 只写签名不写实现 | 前端类比:TypeScript interface |
+| **implements / extends** | 实现 / 继承 | *"class JdbcRecordRepository implements RecordRepository"* | 和 TS 的 `implements` / `extends` 一样 |
+| **constructor** | 构造器 | *"new RecordService(repository)"* | 函数名与类同名,无返回值 |
+| **record** | 记录(不可变模型) | *"public record LearningRecord(Long id, ...)"*(JDK 16+) | 自动生成构造器/toString/equals,比手写 Pojo 省事 |
+| **@Override** | 注解:重写 | *"@Override public LearningRecord insert(...)"* | 给编译器校验"父类确实有这方法" |
+| **null** | 空引用 | *"if (request == null) throw ..."* | Java 没有 undefined,只有 null |
+| **Optional** | 容器(可能为空) | *"return repository.findById(id);"* → `.orElse(null)` | 显式声明"可能为空",逼调用者处理 |
+| **List / Map / Set** | 列表/映射/集合 | *"List\<String> sentences; Map\<String,Object> analysis"* | 与 JS 数组/对象对应,但泛型 `<T>` 声明元素类型 |
+
+---
+
+## 场景 4:HTTP / Web 框架(Javalin 版,通用词到 Spring 一样用)
+
+| 词汇 | 含义 | 典型句子 | 本项目实例 |
+|---|---|---|---|
+| **route** | 路由 | *"Register route: POST /api/records"* | `app.post("/api/records", recordController::create)` |
+| **handler** | 处理器 | *"Handler method signature: public void create(Context ctx)"* | Javalin 里 Controller 的每个方法就是 handler |
+| **context** | 上下文(本次请求) | *"ctx.bodyAsClass(RecordCreateRequest.class)"* | Controller 通过 ctx 拿请求、写响应 |
+| **body** | 请求体 | *"Read the request body"* | `ctx.body()` 和 `ctx.bodyAsClass(...)` |
+| **query parameter** | 查询参数 | *"ctx.queryParam("status")"* | 对应 URL `?status=learning` |
+| **path parameter** | 路径参数 | *"GET /api/records/\{id}"* → `ctx.pathParam("id")` | 大括号 = 路径参数占位 |
+| **status / status code** | 状态码 | *"ctx.status(201)"* | 201 Created、204 No Content、404 Not Found、400 Bad Request |
+| **json** | JSON 序列化/反序列化 | *"ctx.json(record)"* | 响应自动转 JSON |
+| **serialize / deserialize** | 序列化 / 反序列化 | *"Jackson deserializes JSON into a record"* | 网络传字符串 ↔ 本地对象互转 |
+| **header** | 请求头 | *"Content-Type: application/json"* | 前端 `headers: {'Content-Type': 'application/json'}` |
+| **POST / GET / PUT / DELETE** | HTTP 方法 | *"POST to create, PUT to update, DELETE to remove"* | 与前后端都相关,CRUD 一一对应 |
+| **validate** | 校验 | *"Validate the input before use"* | `requireJsonBody` 缺参检查,漏掉就 500/400 |
+| **error handler** | 错误处理 | *"GlobalExceptionHandler catches everything"* | 兜底转为统一 JSON(本项目 ApiException → 状态码) |
+| **CORS** | 跨域资源共享 | *"Enable CORS for browser clients"* | `enableCors(cors -> cors.addRule(it -> it.anyHost()))` |
+
+---
+
+## 场景 5:JDBC / 数据库(本项目 store 目录)
+
+| 词汇 | 含义 | 典型句子 | 解释 |
+|---|---|---|---|
+| **connection** | 连接 | *"DriverManager.getConnection(jdbcUrl)"* | 打开与数据库的一条通道 |
+| **JDBC** | Java 数据库连接标准 | *"JDBC = Java Database Connectivity"* | JDK 自带接口,厂商写驱动 |
+| **driver** | 驱动 | *"The H2 driver: org.h2.Driver"* | 每个数据库一款驱动(MySQL/Postgres/H2 各不相同) |
+| **statement** | 语句 | *"Statement.May return generated keys"* | 执行 SQL 的接口,(不带参数;带参数用下面这个) |
+| **prepared statement** | 预编译语句 | *"PreparedStatement ps = conn.prepareStatement(sql)"* | `?` 占位符防 SQL 注入;等价 React 不拼字符串进 HTML |
+| **placeholder** | 占位符 | *"The '?' placeholders are filled by setString(1, ...)"* | SQL 里的问号 |
+| **executeUpdate / executeQuery** | 执行更新 / 查询 | *"ps.executeUpdate()"* 返回行数;*"ps.executeQuery()"* 返回 ResultSet | 改数据 vs 查数据 |
+| **result set** | 结果集 | *"ResultSet keys = ps.getGeneratedKeys()"* | 查回来的表(要指针.next() 逐行取) |
+| **generated keys** | 生成的主键 | *"RETURN_GENERATED_KEYS to get the id"* | 自增 id 拿到手;(等价数据库版 insertId) |
+| **transaction / commit / rollback** | 事务 / 提交 / 回滚 | *"Commit at the end; rollback on failure"* | 多步操作要么全成要么全撤销 |
+| **constraint** | 约束 | *"Numeric constraint: UNIQUE, NOT NULL"* | 数据规则(主键、非空、唯一) |
+| **index / primary key** | 索引 / 主键 | *"id BIGINT AUTO_INCREMENT PRIMARY KEY"* | 主键=每条记录的唯一身份 |
+| **duplicate / not found** | 重复 / 未找到 | *"Duplicate key value"* / *"Record not found: 42"* | SQLException 常见消息,对应 409/404 语义 |
+| **lock** | 锁 | *"The file is locked: zero.mv.db"* | 数据库独占;上面 90149 真案例 |
+
+---
+
+## 场景 6:日志(排查问题第一现场)
+
+| 词汇 | 级别/含义 | 典型句子 |
+|---|---|---|
+| **debug** | 调试——最小粒度,默认不打印 | *"Enable debug level to see the query"* |
+| **info** | 正常流程——启动、请求完成 | *"Javalin started in 300ms"*(读启动完成标志,本项目日志梗) |
+| **warn** | 可以继续但值得注意 | *"Unknown property 'foo' in JSON"* |
+| **error** | 程序出错 | *"error during record create"* — 后面通常跟 stack trace |
+| **logger** | 日志器 | *"Logger logger = LoggerFactory.getLogger(X.class)"* |
+| **level** | 级别 | *"Change the log level to DEBUG in application.properties"* |
+| **pattern** | 格式 | *"%d %-5level %msg"* (日期 级别 消息) |
+| **timeline / trace** | 时间线/追踪 | *"Print a log before and after each API call"* — 前后各一行日志就能对齐时序 |
+
+---
+
+## 场景 7:JUnit 测试(本项目 test 目录高频)
+
+| 词汇 | 含义 | 典型句子 |
+|---|---|---|
+| **test / test case** | 测试 / 测试用例 | *"Run 77 test cases"*(本项目当前 77 个) |
+| **assert / assertEquals** | 断言 | *"assertEquals(201, res.statusCode(), \"body=\" + res.body())"* |
+| **expected** | 期望值 | *"expected: \<201> but was: \<500>"* — 断言失败时直接告诉差异 |
+| **beforeEach / @BeforeEach** | 每个用例前执行(初始化) | *"In @BeforeEach, start the server and clean the table"* |
+| **@Test** | 标注一个用例 | 方法上标 @Test,`mvnw test` 才会跑 |
+| **mock / stub** | 模拟对象 / 桩 | *"Mock the repository to return fixed data"* — 不连真库,返回假的 |
+| **throw expected** | 断言抛异常 | *"assertThrows(ApiException.class, () -> service.delete(1))"* — 测试"理应报错的场景" |
+| **green / red** | 测试过 / 测试挂 | *"All tests green"* — 全绿;红了就往上找 `FAILED` |
+| **integration test / unit test** | 集成测试 / 单元测试 | *"RecordControllerTest is an integration test: real HTTP + in-memory DB"* — 本项目两者都有 |
+
+---
+
+## 场景 8:并发与多线程(进公司必读)
+
+| 词汇 | 含义 | 典型句子 |
+|---|---|---|
+| **thread** | 线程(执行的最小单元) | *"Each request runs on its own thread"*(Javalin 默认多线程处理) |
+| **synchronized** | 同步(锁住临界区) | *"synchronized method: only one thread can enter"* |
+| **lock** | 锁 | *"ReentrantLock; deadlock = two threads each holding one lock, waiting for the other"* |
+| **deadlock** | 死锁 | *"The server hangs: likely a deadlock"* |
+| **thread-safe / not thread-safe** | 线程安全 / 不安全 | *"PreparedStatement is not thread-safe — one per thread"* |
+| **concurrent** | 并发的 | *"ConcurrentModificationException: modify a collection while iterating"* |
+| **race condition** | 竞态条件(多个线程同时写) | *"Two requests only called one last-write wins"* |
+| **pool** | 池(复用资源) | *"Connection pool: try (Connection conn = ...)"* — try-with-resources 用完即还池 |
+| **submit / execute** | 提交任务 | *"executor.submit(task)"* |
+| **sleep / join / wait** | 暂停 / 等待 / 阻塞 | *"Thread.sleep(1000)"* |
+
+---
+
+## 场景 9:部署与运行环境
+
+| 词汇 | 含义 | 典型句子 |
+|---|---|---|
+| **jar** | Java 压缩包(一堆 .class) | *"java -jar target/zero-server-1.0.0.jar"* |
+| **classpath** | 类搜索路径 | *"Map all dependencies into the classpath"*(shade 就是把依赖全塞进一个 jar) |
+| **manifest** | 打包清单 | *"Main-Class in META-INF/MANIFEST.MF"* |
+| **port** | 端口 | *"Port 3000 already in use"* — 典型的启动报错,改 `PORT` 环境变量 |
+| **localhost / 0.0.0.0** | 本机地址 / 所有网卡 | *"0.0.0.0 = listen on all interfaces"*(本项目 Javalin 默认行为) |
+| **environment variable** | 环境变量 | *"System.getenv("PORT")"* |
+| **JDK / JRE** | 开发工具包 / 运行时 | *"JDK 17 compile, run on JDK 17+"* |
+| **start / stop / restart** | 启动 / 停止 / 重启 | *"Restart the server after the build"* |
+| **shutdown** | 关闭 | *"Graceful shutdown"* — 等任务处理完再退 |
+
+---
+
+## 场景 10:高频动词(任何场景通用,报错消息的主角)
+
+| 动词 | 中文 | 报错/日志中的样子 |
+|---|---|---|
+| **fail** | 失败 | *"build failed"、*"failed to save record"*(本项目 SnackBar 文案) |
+| **reject / refuse** | 拒绝 | *"Connection refused"* |
+| **require** | 要求(必填) | *"Missing required fields"* — 必填字段缺失(本项目 400) |
+| **resolve** | 解析(依赖/符号) | *"Cannot resolve symbol 'Instant'"*、*"Resolving dependencies..."* |
+| **convert** | 转换 | *"int cannot be converted to String"*;JSON↔对象叫 serialize/deserialize |
+| **parse** | 解析(字符串→值) | *"For input string: \"abc\""*、*"could not be parsed at index 26"* |
+| **initialize** | 初始化 | *"Failed to initialize database"* |
+| **shutdown / terminate** | 终止 | 进程退出相关 |
+| **overwrite** | 覆盖 | *"overriding version from 2.3.232 to 2.3.232"* |
+| **skip** | 跳过 | *"Tests skipped"* |
+| **retry** | 重试 | *"Retry the request after timeout"* |
+| **cache** | 缓存 | *"The file is cached — try clean"* |
+| **confirm / verify** | 确认 / 验证 | *"Verify the result: GET /api/records"* |
+
+---
+
+## 附录:30 天高频词汇量自测(入门到能独立读报错)
+
+按频率给三个层级,先背第一层,第二层一周内现学现用:
+
+**第 1 层(天天见,必会)**:exception / throw, stack trace, at, caused by, null, error, build, test, dependency, connection, query, response, request, server, client, method, class, version, port, timeout
+
+**第 2 层(报错消息里反复出现)**:expected/actual, cannot/could not, invalid/illegal/missing, failed to, incompatible, resolves, parse/parsed, locked/refused, out of bounds, duplicate, not found, compile, package, deploy, restart, log level, list/map/set, interface/implement, override, return, void
+
+**第 3 层(懂了就能读复杂报错)**:deserialize, concurrency, deadlock, race condition, classpath, classloader, unboxing/boxing(int ↔ Integer), generic/erased, lambda, streams, record, sealed class, virtual thread
+
+---
+
+## 附:把词汇串成本项目的最短句子(1 分钟过一遍)
+
+> "Maven **compiles** and **packages** the project; **Start** the server on **port** 3000.
+> A request **POSTs** a **record** to **/api/records**; the **handler** **validates** the **body**,
+> the **service** sets the **timestamp**, the **repository** **executes** a **prepared statement**
+> against the H2 **database**. If anything **fails**, the **exception** is caught and **logged**,
+> the **stack trace** shows the **caused by** — the **root** of the problem."

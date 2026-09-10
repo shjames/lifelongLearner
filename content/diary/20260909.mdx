@@ -1,0 +1,302 @@
+---
+title: 日记：2026/09/09
+tags:
+  - 日记
+  - 技术
+  - Java
+  - 学习
+summary: Java 报错阅读与快速定位指南（资深工程师视角）
+category: diary
+---
+
+# Java 报错阅读与快速定位指南(资深工程师视角)
+
+> 面向已有前端经验、正在上手 Java 的开发者。
+> 目标:看到一份报错,能在 **30 秒内说出"哪一类问题 + 根因是什么"**,并在 **5 分钟内定位到代码行**。
+> 所有示例尽量用真实项目(本仓库 server-java)里出现过的报错原文。
+
+---
+
+## 0. 一句话心理模型
+
+报错信息是一张**三维地图**:第一维是"哪一层的错"(编译期 / 运行期 / JVM 环境),第二维是"根因是什么"(异常类型 + 消息),第三维是"在哪里"(栈轨迹中的代码行)。
+
+看懂报错的顺序永远是:**先看第一行,再看到底,再到中间找自己的代码**。
+
+---
+
+## 1. 先分大类:三种报错,两种处理方式
+
+Java 的报错从出现时机看只有三种,处理方法完全不同。
+
+| 类别 | 出现时机 | 长什么样 | 定位方式 | 现实占比(参考) |
+|---|---|---|---|---|
+| **编译期错误**(compile-time error) | `mvnw compile` 或 IDE 保存时 | 编辑器红线;命令行 `XXX.java:42: error: ...` | 位置精确到文件:行:列,解决最快 | 占比不高,但每天都会遇到 |
+| **运行期异常**(Exception,可检查 checked 或运行时 unchecked) | 程序跑起来之后 | `Exception in thread ... java.lang.NullPointerException` + `at` 栈帧列表 | 需要读栈,是主力技能 | **实际开发中 90%+ 的调试时间花在这**;真实数据:Java 应用约 65% 的崩溃来自运行时异常 |
+| **JVM 级错误**(Error) | 运行期,但通常不是自己代码写错 | `OutOfMemoryError`、`StackOverflowError`、`NoClassDefFoundError`、`NoSuchMethodError` | 多为环境、依赖、资源问题,不是改一行代码能解决 | 少见但难查,最值得掌握特征 |
+
+**关键判断**:看见 `java.lang.xxxError(Exception)` 前缀的类名,先分清是 `Exception` 还是 `Error`——这是资深工程师和初学者在直觉上的第一个区别。
+
+---
+
+## 2. 一段真实报错的完整解剖
+
+下面是一段典型的运行时异常(格式是从 JDK 直接输出的):
+
+```
+Exception in thread "main" java.lang.NullPointerException: Cannot invoke
+"com.zero.server.model.LearningRecord.id()" because "record" is null
+	at com.zero.server.service.RecordService.create(RecordService.java:52)
+	at com.zero.server.controller.RecordController.create(RecordController.java:40)
+	at io.javalin.http.Handler.handle(Handler.java:42)
+	at io.javalin.http.router.Router.lambda$... (Router.java:120)
+	at ...
+```
+
+逐段解读:
+
+| 段 | 内容 | 含义 | 你要做的 |
+|---|---|---|---|
+| 第 1 行前半 | `java.lang.NullPointerException` | **异常全名** = 根因类型 | 查速查表(见第 4 章)确定类型 |
+| 第 1 行后半 | `Cannot invoke "...id()" because "record" is null` | **消息** = 精确定位什么对象、调了什么方法 | 这行是最重要的!直接告诉你"谁为 null" |
+| 以 `at` 开头的行 | `at com.zero.server.service.RecordService.create(RecordService.java:52)` | **栈轨迹**,从内到外记录"方法调用链" | 从上往下数,**第一个属于你自己包名的行就是出错的代码行** |
+| `Caused by:` | 罕见,在底部 | 被包装的底层异常(如 SQLException 被包成 500 的运行时异常) | **永远先看最底下的 Caused by**,那里往往才是根因 |
+
+### 2.1 读栈的三个核心技巧
+
+1. **第一行是类型,消息是细节**:类型告诉你"大概哪一类",消息告诉你"确切是谁"。`For input string: "abc"` 这种消息看一眼就知道是解析错误。
+2. **Caused by 链:从最底层往外看根因**。异常常被包装(`throw new ApiException(500, e.getMessage())`),外层只说"服务器错误",最底下 `Caused by: java.sql.SQLException: The file is locked` 才是真相。
+3. **at 行只找"自己包名"**:栈里大部分是框架代码(io.javalin、org.springframework、java.lang),不需要看。看过滤后第一个(或第一个与当前请求相关的)代码行,点进 IDE 该行号,往往 10 秒内就能确认。
+
+### 2.2 编译期报错的解剖
+
+```
+server-java/src/main/java/com/zero/server/service/RecordService.java:45: error:
+        incompatible types: int cannot be converted to String
+```
+
+分段:`文件:行号: error: 问题描述`。编译器已经给出**精确位置**(文件 + 行号),你只需要:
+1. 先看文件:行 — 直接跳过去;
+2. 看错误描述 — 类型不匹配、符号找不到、方法不存在;
+3. **从最上面一条开始修** — 编译错误有连锁效应,一个方法签名错了会引发底下十几条报错,修完最上面一条再看,剩下的往往自己消失。
+
+---
+
+## 3. 四步定位法(100% 场景通用)
+
+```
+第 1 步:读第一行 —— 异常类型 + 消息(翻译成人话)
+第 2 步:读最底 Caused by —— 找到真正的根因
+第 3 步:at 行过滤 —— 从下往上找第一个"自己包名"的调用
+第 4 步:跳转断点 —— IDE 点行号,打断点或加日志,复现验证
+```
+
+配合四招现场技巧:
+
+| 技巧 | 场景 | 做法 |
+|---|---|---|
+| **日志 + 时间线** | 多线程/异步 | 在报错前后各插一行日志打印参数,对比哪一步状态不对 |
+| **二分隔离** | 一大段逻辑不知道哪步错 | 注释掉一半代码跑一次,缩小范围再注释一半 |
+| **加打印/断点** | 数据经过多道转换 | 在每次转换后打印中间值,找第一个"不对"的中间值 |
+| **用断言代替目测** | 长链路 | 每层出口写 `assertEquals(期望, 实际, "第 N 步")`,测试输出会告诉你哪一步失败 |
+
+---
+
+## 4. 高频运行期异常速查手册
+
+按真实频率排序(数据基础见第 7 章)。每项含:典型消息、根因、快速定位思路、与本项目挂钩的真实例子。
+
+### 4.1 NullPointerException(空指针,毫无争议的 #1)
+
+- 真实统计:StackOverflow 上最热门的 Java 问题是"什么是 NullPointerException",浏览量 **600 万+**,收藏 17k+,最高票答案由 Jon Skeet 回答,点赞 30k+。Java 应用运行时崩溃中,空指针是出现频率最高的单一根因。
+- 消息形态:
+  - `Cannot invoke "String.length()" because "name" is null`(JDK 8+ 的友好版本)
+  - 老的 JDK / IDEs 有时只显示 `null`(JDK 7 及之前无具体信息)
+  - **消息本身就是高价值信息**:`because "record" is null` 直接点名变量
+- 根因:对 null 值调了方法 / 访问了属性。常见来源:
+  1. 参数没做空校验就继续用;
+  2. 集合查找(如 `map.get(key)`)返回 null 直接 `.isEmpty()`;
+  3. 数据库查询没命中但代码没判 `Optional.isPresent()`;
+  4. 连上的对象还没初始化(构造顺序问题)。
+- 定位:读消息里的变量名 → 找到该变量的赋值来源 → 判断为什么可能是 null。一般**第一行消息**就解决了 80% 的空指针。
+- 本项目案例:参见 6.1(找不到就不用编,这里举典型)。实际里服务端常在上游加校验,如 `RecordController.requireJsonBody` 先判 `ctx.body()` 非空,再 `bodyAsClass`。
+
+### 4.2 ArrayIndexOutOfBoundsException(数组越界,占比约 10-15%)
+
+- 消息:`Index 3 out of bounds for length 2`
+- 根因:读了一个数组/列表不存在的下标。注意 Java 下标从 0 开始,`length=2` 时合法下标是 0、1。
+- 高频坑:循环用了 `i <= list.size()`(应该是 `<`);先 range 再遍历时数据变化了。
+- 定位:看消息里的"长度"和"实际下标",回代码看循环边界或从数据库取出的数据条数。
+
+### 4.3 ClassCastException(类型转换,占比约 5-10%)
+
+- 消息:`class java.lang.Integer cannot be cast to class java.lang.String`
+- 根因:强转 `(String) obj` 时实际类型不符。常见于:
+  - 集合没有泛型(或用了 `List<Object>`),取出来时按自己以为的类型强转;
+  - 泛型擦除后 `List<Object>` 里混入了不同元素;
+  - `Map` 里值类型不统一。
+- 定位:消息告诉你"实际是 Integer,要转成 String",去看你强转的那行,确认对象真实类型。
+
+### 4.4 NumberFormatException(数字解析失败,工单高频 #1 类型之一)
+
+- 消息:`For input string: "NaN"` 或 `For input string: "abc"`
+- 根因:`Integer.parseInt("abc")` / `Long.parseLong("10.5")` 之类。**接收 HTTP 参数时反复出现**。
+- 本项目实例:路由参数版本 `GET /api/records/{id}`,如果前端传入 `abc`,`Long.parseLong("abc")` 就会抛这个。正确处理:捕获后转成 400(`ApiException(400, "Invalid record id: abc")`)。
+
+### 4.5 IllegalArgumentException / IllegalStateException(契约违规)
+
+- 消息:通常是业务自己 `throw new IllegalArgumentException("status must be one of ...")` 写的话,消息即业务解释;
+- 根因:方法调用者传了非法参数(前者)或对象状态不对(后者——如连接已关闭才来用);
+- 定位:消息已经指明了违反的规则,找到哪里抛出,往上追调用点。这是**信息密度最高的自定义异常类型**,看见它说明你（或同事）写代码时加过保险。
+
+### 4.6 ConcurrentModificationException(遍历中修改集合)
+
+- 消息:`java.util.ConcurrentModificationException`
+- 根因:一边 `for (String s : list)` 遍历一边 `list.remove(...)`。Java 的迭代器不记录修改次数,遍历中结构变化会抛这个。
+- 定位:找"遍历 + 删除/新增"的代码块。修法:用迭代器自身 `iterator.remove()`,或收集内容后遍历完再改。
+
+### 4.7 SQLException(JDBC 报错,占比约 3-5%)
+
+- 消息:视驱动而异,如 H2:
+  - `Wrong user name or password [28000-232]`(28000 是 SQL 领域码,表示"用户名或密码错")
+  - `Table "RECORDS" not found; SQL statement: ... [42102-232]`
+  - `The file is locked: ...zero.mv.db [90149-232]` —— **本项目真实发生过的**(见 6.3)
+- 根因:连接串错、用户名密码错、表不存在、SQL 语法错、数据库文件被独占锁。
+- 定位:消息里的**SQLState 码**(方括号里 5 位数字)是标准化的(28000/42000/42102/90149...),查码比读英文快。
+
+### 4.8 IOException 及其子类(网络/IO,占比约 5-8%)
+
+- 消息形态:`Connection refused`、`ConnectException: Connection refused`、`SocketTimeoutException: Read timed out`、`FileNotFoundException: ...`
+- 根因:端口没起、对面进程不在、网络不通、磁盘路径不存在。
+- 定位:消息里的具体地址/路径是线索。`Connection refused` = 目标进程没有监听端口;`timed out` = 监听在但卡住/防火墙。
+
+### 4.9 NoSuchMethodError / NoClassDefFoundError(依赖版本冲突,老大难)
+
+- 消息:`java.lang.NoSuchMethodError: 'void com.zero.server.service.RecordService.create(...)'`
+- 根因:**编译期用的库和运行期是不同版本**(classpath 里两个版本冲突,运行时拿错)。典型场景:一个库 A 依赖 B 1.2 而另一个库 C 也依赖 B 2.0,一个方法在版本间改了签名。
+- 真实数据:在开源项目 issue tracker 中,NoSuchMethodError 被提及的频次与 NullPointerException 处于同一量级。
+- 定位:看消息里**找不到的方法签名** → 用 `mvn dependency:tree` 查冲突 → 用 `dependencyManagement` 强制版本。这是"编译过、运行时崩"的最典型代表。
+
+### 4.10 OutOfMemoryError(JVM 内存耗尽)
+
+- 消息:`java.lang.OutOfMemoryError: Java heap space`(堆满了)/ `GC overhead limit exceeded`(几乎全是垃圾回收)
+- 根因:把无上限的数据往内存放(无限列表、缓存只进不出、递归加载全量数据)。
+- 定位:用内存分析工具看大对象,或加 `-Xmx` 验证是否单纯容量不够。
+
+### 4.11 StackOverflowError(递归无出口)
+
+- 消息:`java.lang.StackOverflowError`
+- 根因:递归函数没有终止条件,或深链无限循环(如 A 依赖 B、B 依赖 A 的 Spring 循环依赖启动期常见)。
+- 定位:栈会很深但几乎全是同一两个方法名一直重复。
+
+### 4.12 ClassNotFoundException(运行时缺类)
+
+- 消息:`java.lang.ClassNotFoundException: com.zero.server.some.Class`
+- 根因:**运行期 classpath 里没有这个类**(与 NoClassDefFoundError 的区别:前者是做类装载动作时找不到;后者是类装载成功过但在执行时没了,或初始化失败)。
+- 典型:忘记把依赖打进 jar;`mvn package` 没有 shade 插件,运行 `java -jar` 时缺第三方 jar。**本项目当初就在 pom 里加过 maven-shade-plugin,否则打包出来的 jar 运行会报这个**。
+- 定位:看 jar 内容(`jar tf xxx.jar | grep ClassName`),或 `mvn dependency:copy-dependencies`。
+
+### 4.13 接口层的 400/404/500(Web 项目独有,本项目高频)
+
+- 400:`{"error":"Missing required fields: input_content, narrative, model_used"}` —— 请求体不符合契约,错误消息通常是**业务提示**,前端直接显示即可(本项目 `ApiException(400, ...)`)
+- 404:`{"error":"Record not found: 42"}` —— 资源不存在,通常是数据库中确实没这条(id 打了头、被删了)
+- 500:通常是意外异常被 `GlobalExceptionHandler` 兜底打印了完整 `stack trace` 到日志 —— **看日志不看响应体**,响应体只给"Internal server error"
+
+### 4.14 编译期三大高频 error
+
+| 报错原文 | 含义 | 快速修法 |
+|---|---|---|
+| `cannot find symbol` | 符号(类/方法/字段)不存在 | 拼写错、忘了 import、类名大小写错、方法不存在 |
+| `incompatible types: int cannot be converted to String` | 类型不匹配 | 看赋值/返回值两侧类型;真实坑:表达式里整数相除丢精度 |
+| `method create in class RecordService cannot be applied to given types` | 参数个数或类型不对 | 对照方法签名:形参(String) 实参(int) |
+| `unchecked assignment` | 无泛型带来不安全的赋值(警告) | 补齐泛型 `<String>` |
+| `cannot resolve symbol`(IDE) | 同上,IDE 术语 | 点开文件按 Alt+Enter 常用修复 |
+
+---
+
+## 5. 环境类"隐形炸弹"(编译过、运行崩)
+
+| 症状 | 真实原因 | 排查动作 |
+|---|---|---|
+| `java -jar` 突然各种 ClassNotFoundException | 用了 shade 之前打的差;或 jar 位置变了 | `jar tf target/x.jar | grep 缺的类` |
+| 本地全绿、CI 红灯 | Maven 版本/JDK 版本不同(如 CI 用 JDK 11,本地 17) | 对齐 `pom.xml` 的 `maven.compiler.release` 和 CI 的 JDK |
+| 同一接口 400/500 时有时无 | 数据依赖;如时间字符串格式 | 用契约测试固化两种输入 |
+| 时区/时间问题 | `Instant.parse` 无 `Z` 后缀直接崩 | 严格规定通过网络的日期必须是 UTC-ISO(本项目 6.1 就是) |
+
+---
+
+## 6. 本项目真实案例复盘(都是处理过的)
+
+### 6.1 Instant 无法解析(400 时报错正文)
+
+前端 Dart `toIso8601String()` 输出 `2026-08-26T06:19:40.873968`(无时区标识),后端 Jackson `Instant` 严格解析要求 `Z` 或 `+08:00` 结尾,于是:
+
+```
+Exception: Failed to save record: {"error":"Cannot deserialize value of type
+java.time.Instant from String \"2026-08-26T06:19:40.873968\" ... could not be
+parsed at index 26"}
+```
+
+- 报错地点:毫秒单位的**消息本身** `could not be parsed at index 26` 指向格式,不是代码行。
+- 根治思路:不是去适配客户端格式,而是契约约定"时间服务端生成"——客户端不许传时间(见 `api_service.dart:79-81`,`saveRecord` 发送前 remove created_at/updated_at)。修复后即消失。
+- **教学结论**:400 的响应体就是给前端看的自白书,不要两眼只盯后端日志。
+
+### 6.2 H2 用户名密码错误(SQLException)
+
+启动时出现:
+
+```
+Caused by: java.sql.SQLException: Wrong user name or password [28000-232]
+```
+
+- 定位路径:28000 码 = 认证失败 → 检查连接串 `jdbc:h2:./data/zero` 后的 `;USER=...;PASSWORD=...` 与资料是否一致。就本项目而言,连接串不需要认证密码,出现了就说明把 `zero.mv.db` 当成需要登录的服务器模式了。
+
+### 6.3 H2 文件锁(数据库无法打开)
+
+```
+Caused by: java.sql.SQLException: The file is locked: ...zero.mv.db [90149-232]
+```
+
+- 根因:H2 内嵌文件模式是**单进程独占**,同时开了 H2 Web Console(8082)或另一个 jar 实例,就锁死。
+- 定位:90149 = "文件被锁"。查到持锁进程(Windows `netstat -ano | findstr 8082`)后停掉即可。
+- 教学结论:看到 `The file is locked`,第一反应应该是"是不是有个没关的进程/控制台",不是改代码。
+
+### 6.4 编译期经典
+
+```java
+return records.stream().map(...).toList();  // 误以为 .toList() 在所有 JDK 都存在
+```
+
+JDK 8/11 编译报 `cannot find symbol: method toList()`(toList 是 JDK 16+ 的 Stream 方法)。这类"环境版本差"的编译报错在团队协作中最常见,`pom.xml` 的 Java 版本号第一眼要确认。
+
+---
+
+## 7. 数据与来源(真实统计)
+
+写这份手册时的调研来源:
+
+- **StackOverflow 最热 Java 问题**:"What is a NullPointerException and how do I fix it?"(浏览量 600 万+,收藏 1.7 万+,Jon Skeet 的答案 3 万+ 点赞)证明空指针是 Java 开发者最常遇到的问题。
+- **关于 Java 异常高频分布**:
+  - StackOverflow 提问 `stackoverflow.com/questions/1263128`(Most common checked and unchecked Java Exceptions):绝大部分每日异常是**未检查异常**(NPE 一类),checked 异常(SQLException、IOException)总数占比反而小。
+  - CSDN 《Java 异常排行榜》统计:ArrayIndexOutOfBoundsException 10-15%,ClassCastException 5-10%,IOException 5-8%,SQLException 3-5%。
+- **Android 崩溃数据**:约 65% 的崩溃来自运行时异常,剩下的来自 JVM Error 类。
+
+> 结论:先学会 NPE 及"检查-选择-调用链"这三招,就掌握了 Java 调试的 80%。其余按速查表查类型即可。
+
+---
+
+## 附录 A:一些"读到就是赚到"的端上处理要点
+
+- `HttpClient`/`http` 调用后一定要看 `response.statusCode`,本项目是 `!= 200 && != 201 抛异常`(`api_service.dart:93`)
+- JUnit 报错 `expected: 201 but was: 500`——后面追加 `res.body()` 到断言消息里,失败时直接打印 body 定位(`import` 一个 `"body=" + res.body()` 的坏习惯反而是好习惯)
+- 日志级别:`org.slf4j.Logger` 有 `error/warn/info/debug` 四个级别,梯次排查时把 `debug` 打开,通常栈里就有全部信息了
+
+## 附录 B:一套固定"读报错"动作(贴在屏幕前)
+
+```
+看到报错 → ① 读第一行(类型+消息)
+         → ② 找最后一项 Caused by(根因)
+         → ③ at 行里搜自己包名,点该行号
+         → ④ 看该行上下文与传入数据
+         → ⑤ 修完再用同样的输入复现一次(验证不再抛)
+```
