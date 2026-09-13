@@ -1,0 +1,39 @@
+---
+title: 日记：2026/09/12
+tags:
+  - 日记
+  - 技术
+  - AI
+  - 测试
+summary: Midscene 1.12 接入 DeepSeek 多模态模型跑 E2E 测试——快、便宜，复杂界面仍有差距
+category: diary
+---
+
+今天读到若川视野的一篇文章：Midscene 1.12 正式接入了 DeepSeek V4 Flash Vision Exp 多模态模型，用视觉定位的方式驱动 E2E 测试。
+
+文章给的测评结论挺实在，三个维度各有看点：
+
+**速度快** —— 普通定位模式下 P50 耗时仅 0.6 秒，比其他模型里最快的还快 0.8～1 秒，比主流旗舰模型快 1.5～2 秒。
+
+**成本低** —— 每张图片最多按 384 个 Token 计价，一万张图的输入成本不到 12 元（按高峰期价格算，空闲期或命中缓存更低）。这个量级对需要反复跑的 E2E 场景确实有吸引力。
+
+**准确率有取舍** —— 目标明确、页面结构简单的场景里已经接近主流旗舰；但元素密集、目标较小或空间关系复杂的界面，容易出现选错或偏移。开启 deepLocate 优化后准确率能提上来，P50 耗时约 1.4 秒，依然保有性能优势。
+
+选型建议也说得中肯：价格低不等于就该选它。真实的 E2E 任务还涉及页面状态理解和步骤规划，作为 DeepSeek 官方 API 的第一款多模态模型，这方面的表现还有待验证。建议结合实际业务，把 Midscene 支持的几款模型都实测一遍，从定位效果、响应速度、调用成本、任务规划四个方面综合比较。
+
+演示案例很直观——用 Midscene + DeepSeek 玩连连看（27 秒，全程视觉定位、未加速未剪辑），以及自动注册 GitHub 账号（表单填写约 50 秒，任务完全由模型自主规划执行）。
+
+接入方式很简单，几个环境变量的事：
+
+```
+MIDSCENE_MODEL_BASE_URL="https://api.deepseek.com"
+MIDSCENE_MODEL_API_KEY="......"
+MIDSCENE_MODEL_NAME="deepseek-v4-flash-vision-exp"
+MIDSCENE_MODEL_FAMILY="deepseek"
+```
+
+原文：[用 Deepseek 多模态跑 E2E 测试 - Midscene 1.12 更新](https://mp.weixin.qq.com/s?__biz=MzA5MjQwMzQyNw==&mid=2650777736&idx=1&sn=3bfdb024c3e4148bd855b8b9f02e0541&chksm=899b6cd37dddbd03c278be3e14b5dd2fccc04cfce1adb6e2d05331bf4122df7f8cbfe728174b)
+
+相关链接：
+- Midscene 官网：https://midscenejs.com
+- GitHub 仓库：https://github.com/web-infra-dev/midscene
