@@ -1,0 +1,61 @@
+---
+title: 日记：2026/09/17
+tags:
+  - 日记
+  - 技术
+  - 调试
+summary: 一段 JSON.parse 的报错栈——栈该从哪头读，以及满屏 node_modules 说明了什么
+category: diary
+---
+
+今天在用 kapi 生成接口代码时，工具直接崩了，吐出一大段错：
+
+```
+ERROR  Expected property name or '}' in JSON at position 1355 (line 1 column 1356)
+    at JSON.parse (<anonymous>)
+    at JSONSchemaToStringSchema (...kapi/lib/cjs/utils.js:200:33)
+    at getResponseDataJsonSchema (...kapi/lib/cjs/utils.js:395:62)
+    at Generator.generateInterfaceCode (...kapi/lib/cjs/Generator.js:647:79)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async ...kapi/lib/cjs/Generator.js:246:44
+    at async Promise.all (index 1)
+    at async ...kapi/lib/cjs/Generator.js:239:50
+    at async Promise.all (index 74)
+    at async ...kapi/lib/cjs/Generator.js:194:38
+ELIFECYCLE  Command failed with exit code 1.
+```
+
+（中间那串 `node_modules\.pnpm\kapi@1.0.13_@types+node@25.9.1_react-dom@18.3.1_react@18.3.1\` 前缀太长，这里略掉了。）
+
+**第一行的信息量其实比看起来大。** 它说的是：在解析一段 JSON 文本时走到第 1355 个字符处，期待看到一个属性名或者一个 `}`，实际看到的不是。翻译成大白话就是——这份 JSON 语法是坏的。最常见的原因是少了个引号、多了个逗号，或者字符串被截断了。
+
+而它顺手把位置也告诉你了：position 1355。报错给到这一步，其实已经很够意思了。
+
+![终端报错截图：JSON.parse 解析失败，调用栈从 JSONSchemaToStringSchema 一路排到 Promise.all](/diary/images/20260917_stack_trace_json_error.jpg)
+
+## 栈要从哪头读
+
+最上面那行 `at JSON.parse` 才是真正出事的位置，往下每一行都是「谁调用了它」，一路排到最底下。但读的时候方向得反过来：**执行是从最下面那行开始的**，一层层往里调用，最后停在最上面的 `JSON.parse`，在那里炸掉。
+
+像剥洋葱，从外往里一层层剥，剥到芯的时候出了问题。
+
+所以同一段栈有两种读法，用途不一样：
+
+- **从下往上**：还原执行顺序，弄明白「事情是怎么一步步走到这里的」
+- **从上往下**：追责，顺着「谁调用了我」一层层找到上一层的现场
+
+## 满屏 node_modules 说明了什么
+
+另一个细节值得留意：除了最上面的 `JSON.parse`，其余全是 node_modules 里 kapi 自己的代码，一行业务代码都没有。
+
+这本身就是个信号。**第三方库出现在栈里，通常不代表库有 bug，而是它拿到的数据有问题。** 出事的那个函数叫 `getResponseDataJsonSchema`，正在处理接口的 JSON Schema——也就是说，是某一份喂给它的 JSON 本身就是坏的，它只是老老实实地去解析，然后被绊倒。
+
+所以这种情况下，顺着栈往下找自己的代码是找不到的，得换个方向：回到输入，去看 position 1355 那个位置对应的，到底是哪份数据、哪个接口。
+
+栈里夹着的 `async` 和 `Promise.all (index N)` 也是线索：这段代码是并发跑的，底下的 `index 74` 说明它在批量处理七十多个任务，而上层的 `index 1` 则指出，出事的是这批里的第二个。
+
+## 报错信息不是噪音
+
+这段栈其实把三件事都讲清楚了：坏在哪（position 1355）、谁绊倒的（`JSON.parse`）、数据从哪来（`getResponseDataJsonSchema`）。
+
+剩下的，只是愿不愿意把它读完。
