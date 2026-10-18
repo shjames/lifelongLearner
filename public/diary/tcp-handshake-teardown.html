@@ -1,0 +1,1710 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>TCP 连接的建立与关闭 · 交互演示</title>
+<style>
+  *{box-sizing:border-box}
+  :root{
+    --bg:#0d141b; --panel:#151f29; --panel2:#1b2833; --ink:#e7eef6; --muted:#96a8b8;
+    --line:#28394a; --accent:#4ea1ff; --green:#3ddc97; --orange:#ffb454; --purple:#c58bff; --red:#ff6b6b;
+    --pw:84px; --dur:900ms;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  html,body{margin:0}
+  body{
+    background:radial-gradient(1100px 560px at 18% -12%, #17293a 0%, var(--bg) 62%);
+    color:var(--ink);
+    font:15px/1.65 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  [hidden]{display:none !important}
+  .wrap{max-width:1060px;margin:0 auto;padding:28px 16px 72px}
+  h1{font-size:clamp(20px,3.4vw,28px);margin:0 0 8px;letter-spacing:.01em}
+  h2{font-size:16px;margin:0 0 10px}
+  h3{font-size:12px;margin:0 0 8px;color:var(--muted);font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+  .lede{color:var(--muted);margin:0 0 20px;max-width:72ch}
+  .tiny{font-size:11.5px;color:var(--muted);margin:8px 0 0;line-height:1.6}
+  code{font-family:var(--mono);font-size:11.5px;color:#cfe6ff;background:#0c141c;padding:1px 4px;border-radius:4px}
+
+  .tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:18px}
+  .tab{appearance:none;background:transparent;border:0;color:var(--muted);padding:10px 14px;font:inherit;font-size:14px;cursor:pointer;border-bottom:2px solid transparent;border-radius:8px 8px 0 0}
+  .tab:hover{color:var(--ink);background:rgba(255,255,255,.03)}
+  .tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+  .tab:focus-visible,.btn:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+
+  /* ---------- 主机与通道 ---------- */
+  .stage{display:grid;grid-template-columns:minmax(92px,1fr) minmax(108px,1.5fr) minmax(92px,1fr);gap:10px;align-items:stretch}
+  .host{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 10px;min-width:0;transition:border-color .25s, box-shadow .25s}
+  .host h3{margin-bottom:8px}
+  .state-badge{display:inline-block;font-family:var(--mono);font-size:12px;padding:3px 8px;border-radius:999px;background:#0a1016;border:1px solid var(--line);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;transition:color .2s,border-color .2s}
+  .state-badge[data-kind="open"]{border-color:var(--green);color:var(--green)}
+  .state-badge[data-kind="opening"]{border-color:var(--accent);color:var(--accent)}
+  .state-badge[data-kind="closing"]{border-color:var(--purple);color:var(--purple)}
+  .state-badge[data-kind="wait"]{border-color:var(--orange);color:var(--orange)}
+  .kv{margin:10px 0 0;display:grid;gap:4px;font-family:var(--mono);font-size:11px}
+  .kv > div{display:flex;justify-content:space-between;gap:6px;color:var(--muted)}
+  .kv dt{white-space:nowrap}
+  .kv dd{margin:0;color:var(--ink)}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(78,161,255,.45)}100%{box-shadow:0 0 0 12px rgba(78,161,255,0)}}
+  .host.pulse{animation:pulse .55s ease-out}
+
+  .link{position:relative;min-height:220px;border:1px dashed var(--line);border-radius:14px;overflow:hidden;
+    background:repeating-linear-gradient(90deg,transparent 0 22px, rgba(78,161,255,.045) 22px 23px)}
+  .lane-label{position:absolute;left:8px;font-size:10px;color:var(--muted);font-family:var(--mono);letter-spacing:.03em;pointer-events:none}
+  .lane-label.top{top:6px}
+  .lane-label.bottom{bottom:6px}
+  .lane-line{position:absolute;left:6px;right:6px;height:1px;background:linear-gradient(90deg,transparent,var(--line) 15%,var(--line) 85%,transparent);pointer-events:none}
+  .lane-line.t{top:32%}
+  .lane-line.b{top:58%}
+
+  .packet{position:absolute;width:var(--pw);padding:5px 6px;border-radius:8px;background:#16222e;
+    border:1px solid var(--accent);text-align:center;font-family:var(--mono);font-size:11px;line-height:1.25;
+    box-shadow:0 4px 14px rgba(0,0,0,.45);transition:left var(--dur) cubic-bezier(.4,0,.2,1),opacity .3s;
+    will-change:left;z-index:2}
+  .packet .flags{display:block;font-weight:700;letter-spacing:.02em}
+  .packet .nums{display:block;font-size:9.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .packet.right{left:0}
+  .packet.right.go{left:calc(100% - var(--pw))}
+  .packet.left{left:calc(100% - var(--pw))}
+  .packet.left.go{left:0}
+  .packet.ack{border-color:var(--green)}
+  .packet.data{border-color:var(--orange)}
+  .packet.fin{border-color:var(--purple)}
+  .packet.rst{border-color:var(--red);background:#2a1518}
+  .packet.stale{border-style:dashed;opacity:.78}
+  .packet.retx{border-style:dashed}
+  .packet.lost{opacity:0;border-color:var(--red)}
+
+  .legend{font-size:11.5px;color:var(--muted);margin:10px 2px 0;line-height:1.8}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin:0 4px 0 10px;vertical-align:1px}
+  .dot.syn{background:var(--accent)} .dot.ack{background:var(--green)} .dot.data{background:var(--orange)}
+  .dot.fin{background:var(--purple)} .dot.rst{background:var(--red)}
+
+  /* ---------- 控件 ---------- */
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0}
+  .btn{appearance:none;font:inherit;font-size:14px;padding:9px 14px;border-radius:10px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--ink);cursor:pointer;transition:transform .06s,background .2s,border-color .2s}
+  .btn:hover:not(:disabled){border-color:var(--accent)}
+  .btn:active:not(:disabled){transform:translateY(1px)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#04121f;font-weight:650}
+  .btn.primary:hover:not(:disabled){background:#6cb4ff}
+  .check,.radio{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
+  input[type="checkbox"],input[type="radio"]{accent-color:var(--accent);width:16px;height:16px;margin:0}
+  .speed{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+  select{font:inherit;font-size:13px;padding:6px 8px;border-radius:8px;background:var(--panel2);color:var(--ink);border:1px solid var(--line)}
+
+  /* ---------- 讲解区 ---------- */
+  .say{margin-top:14px;min-height:112px}
+  .say h2{color:var(--ink);font-size:15px}
+  .say p{margin:0;color:#c7d5e2;max-width:82ch}
+
+  #tw-wrap{margin-top:12px}
+  .tw-label{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .bar{height:8px;border-radius:999px;background:#0a1016;border:1px solid var(--line);overflow:hidden}
+  .bar span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--orange),var(--accent));transition:width .08s linear}
+
+  /* ---------- 表格 ---------- */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:11px;letter-spacing:.04em}
+  tbody tr:last-child td{border-bottom:0}
+  #state-table tr{transition:background .2s}
+  #state-table tr.on{background:rgba(78,161,255,.1);box-shadow:inset 2px 0 0 var(--accent)}
+  #state-table .live{color:var(--accent);font-size:11px;white-space:nowrap}
+  #state-table td:nth-child(2){white-space:nowrap}
+  .log-wrap{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+  .log-wrap table{min-width:540px}
+  #log td{white-space:nowrap}
+  #log td.note{white-space:normal;color:var(--muted);min-width:96px}
+  #log td.empty{white-space:normal;color:var(--muted)}
+  #log code{font-size:11px}
+
+  /* ---------- 实验区 ---------- */
+  .exp{margin-bottom:16px}
+  .exp + .exp{margin-top:0}
+  .verdict{margin-top:12px;padding:12px 14px;border-radius:10px;border:1px solid var(--line);
+    background:#101a23;color:#c7d5e2;min-height:52px;font-size:13.5px}
+  .verdict.ok{border-color:rgba(61,220,151,.5);background:rgba(61,220,151,.06)}
+  .verdict.bad{border-color:rgba(255,107,107,.5);background:rgba(255,107,107,.06)}
+  .points{margin:8px 0 0;padding-left:20px;color:#c7d5e2}
+  .points li{margin:6px 0}
+  .stage.mini .link{min-height:170px}
+  .stage.mini .kv{display:none}
+
+  /* ---------- 误区与前端 ---------- */
+  .myths{display:grid;gap:10px;margin-top:12px}
+  .myth{display:grid;grid-template-columns:22px 1fr;gap:10px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+  .myth .x{color:var(--red);font-weight:700;line-height:1.5}
+  .myth p{margin:0;font-size:13.5px}
+  .myth p b{color:var(--ink)}
+  .myth p span{color:#c7d5e2}
+
+  /* ---------- 步骤历史 ---------- */
+  .history{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-2px 0 8px;font-size:11.5px;color:var(--muted)}
+  .history .hlabel{margin-right:2px;letter-spacing:.04em}
+  .hchip{appearance:none;font:inherit;font-family:var(--mono);font-size:11px;line-height:1.4;padding:4px 9px;border-radius:999px;
+    border:1px solid var(--line);background:var(--panel2);color:var(--muted);cursor:pointer;transition:border-color .2s,color .2s,background .2s}
+  .hchip:hover:not(:disabled){border-color:var(--accent);color:var(--ink)}
+  .hchip[aria-current="step"]{border-color:var(--accent);color:var(--accent);background:rgba(78,161,255,.12)}
+  .hchip:disabled{opacity:.45;cursor:not-allowed}
+  .packet.landed{box-shadow:0 0 0 2px rgba(255,255,255,.07),0 6px 18px rgba(0,0,0,.5)}
+
+  /* ---------- 术语全书 ---------- */
+  .gloss-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px}
+  .gloss-controls input{flex:1 1 260px;min-width:0;font:inherit;font-size:13.5px;color:var(--ink);
+    background:#0b141c;border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+  .gloss-controls input::placeholder{color:#6f8496}
+  .gloss-nav{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+  .gloss-nav a{font-size:12px;color:#bcd0e2;text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:4px 10px;background:var(--panel2)}
+  .gloss-nav a:hover{border-color:var(--accent);color:var(--ink)}
+  .gloss-sec{margin-top:16px;scroll-margin-top:14px}
+  .gloss-sec > h2{font-size:15px;margin:0 0 4px}
+  .gloss-sec > .sec-note{font-size:12px;color:var(--muted);margin:0 0 4px;max-width:82ch}
+  .term-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+  .term{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 14px;min-width:0}
+  .term h4{margin:0 0 7px;font-size:14px;line-height:1.45}
+  .term h4 .en{display:block;font-family:var(--mono);font-size:10.5px;font-weight:400;color:var(--muted);letter-spacing:.02em;margin-top:2px}
+  .term p{margin:6px 0;font-size:13px;color:#c7d5e2}
+  .term p b{color:var(--ink)}
+  .term .where{color:#9fd0ff}
+  .term .warn{color:#ffd39a}
+  .term code{font-size:11px}
+  .term ul{margin:6px 0 0;padding-left:18px;font-size:12.5px;color:#c7d5e2}
+  .term li{margin:3px 0}
+  .term table{margin-top:8px;font-size:11.5px}
+  .term th,.term td{padding:4px 6px}
+  .gloss-empty{padding:26px 14px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px;margin-top:14px}
+  details.qa{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 13px;margin-top:8px}
+  details.qa summary{cursor:pointer;font-size:13.5px;color:var(--ink)}
+  details.qa p{margin:8px 0 0;font-size:13px;color:#c7d5e2}
+  .cmd{display:block;white-space:pre-wrap;word-break:break-word;background:#0a1016;border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin:7px 0;font-family:var(--mono);font-size:11.5px;color:#cfe6ff;line-height:1.55}
+  @media (max-width:820px){ .term-grid{grid-template-columns:1fr} }
+  .rtt{display:flex;border-radius:10px;overflow:hidden;border:1px solid var(--line);font-size:11.5px;text-align:center;margin-top:12px}
+  .rtt .seg{padding:10px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rtt .dns{flex:1;background:#1c2a37}
+  .rtt .tcp{flex:2;background:#1e3a5c;color:#cfe6ff}
+  .rtt .tls{flex:2.5;background:#2a2440;color:#e0d4ff}
+  .rtt .http{flex:1.5;background:#1c3329;color:#c9f5df}
+
+  footer{margin-top:28px;color:var(--muted);font-size:12px;line-height:1.75;border-top:1px solid var(--line);padding-top:14px}
+
+  @media (max-width:820px){ .grid2{grid-template-columns:1fr} }
+  @media (max-width:560px){
+    .wrap{padding:20px 12px 56px}
+    .stage{grid-template-columns:minmax(80px,1fr) minmax(96px,1.25fr) minmax(80px,1fr);gap:6px}
+    .host{padding:9px 7px}
+    .kv{font-size:10px}
+    .state-badge{font-size:10.5px;padding:2px 6px}
+    :root{--pw:64px}
+    .link{min-height:190px}
+    .packet{font-size:10px;padding:4px}
+    .packet .nums{font-size:8.5px}
+  }
+  @media (max-width:380px){
+    .stage{grid-template-columns:minmax(72px,1fr) minmax(84px,1.1fr) minmax(72px,1fr)}
+    :root{--pw:56px}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .packet{transition-duration:120ms !important}
+    .host.pulse{animation:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>TCP 连接的建立与关闭</h1>
+    <p class="lede">每点一次「下一步」，就发出一条报文：两侧状态、seq 与 ack 按 TCP 的真实规则变化。演示用 100 / 300 这类小数字代替随机 32 位 ISN，只为了便于阅读；报文顺序与状态转换遵循 RFC 9293。</p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="演示分区">
+    <button class="tab" id="tab-main" role="tab" aria-selected="true" aria-controls="panel-main">① 建立与关闭</button>
+    <button class="tab" id="tab-why" role="tab" aria-selected="false" aria-controls="panel-why" tabindex="-1">② 两个对比实验</button>
+    <button class="tab" id="tab-ref" role="tab" aria-selected="false" aria-controls="panel-ref" tabindex="-1">③ 误区与前端</button>
+    <button class="tab" id="tab-gloss" role="tab" aria-selected="false" aria-controls="panel-gloss" tabindex="-1">④ 术语全书与实战</button>
+  </nav>
+
+  <!-- ================= 面板 1：主实验 ================= -->
+  <section id="panel-main" role="tabpanel" aria-labelledby="tab-main">
+    <div class="stage">
+      <div class="host" id="host-client">
+        <h3>客户端</h3>
+        <div class="state-badge" id="state-client" data-kind="closed">CLOSED</div>
+        <dl class="kv">
+          <div><dt>snd.nxt</dt><dd id="snd-client">100</dd></div>
+          <div><dt>rcv.nxt</dt><dd id="rcv-client">—</dd></div>
+        </dl>
+      </div>
+
+      <div class="link" id="main-link">
+        <span class="lane-label top">客户端 → 服务端</span>
+        <span class="lane-label bottom">服务端 → 客户端</span>
+        <i class="lane-line t"></i>
+        <i class="lane-line b"></i>
+      </div>
+
+      <div class="host" id="host-server">
+        <h3>服务端</h3>
+        <div class="state-badge" id="state-server" data-kind="closed">LISTEN</div>
+        <dl class="kv">
+          <div><dt>snd.nxt</dt><dd id="snd-server">300</dd></div>
+          <div><dt>rcv.nxt</dt><dd id="rcv-server">—</dd></div>
+        </dl>
+      </div>
+    </div>
+
+    <p class="legend">
+      <span class="dot syn"></span>SYN
+      <span class="dot ack"></span>ACK
+      <span class="dot data"></span>数据
+      <span class="dot fin"></span>FIN
+      <span class="dot rst"></span>RST
+      　虚线 = 重传或旧报文　|　snd.nxt = 下一个要发送的序号，rcv.nxt = 下一个期望接收的序号
+    </p>
+
+    <div class="controls">
+      <button class="btn primary" id="next">① 客户端发送 SYN</button>
+      <button class="btn" id="retry" title="从本步开始前的状态重新播放" disabled>重试本步</button>
+      <button class="btn" id="back" title="回到上一步结束后的状态" disabled>上一步</button>
+      <button class="btn" id="auto">自动播放</button>
+      <button class="btn" id="reset">重置</button>
+      <label class="check" title="仅对第 9 步生效">
+        <input type="checkbox" id="loss-chk" disabled> 模拟最后一条 ACK 丢失
+      </label>
+      <label class="speed">速度
+        <select id="speed" aria-label="动画速度">
+          <option value="1400">慢</option>
+          <option value="900" selected>正常</option>
+          <option value="450">快</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="history" id="history" aria-label="步骤历史"></div>
+
+    <div id="tw-wrap" hidden>
+      <div class="tw-label">TIME_WAIT · 2MSL 倒计时（演示加速，真实 Linux 约 60 秒）</div>
+      <div class="bar"><span id="tw-bar"></span></div>
+    </div>
+
+    <div class="card say" aria-live="polite">
+      <h2 id="say-title">准备开始</h2>
+      <p id="say-text">服务端已经在 LISTEN，客户端还是 CLOSED。点「下一步」让客户端发起连接。</p>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>状态机</h2>
+        <table id="state-table">
+          <thead><tr><th>状态</th><th>属于</th><th>含义</th><th>当前</th></tr></thead>
+          <tbody>
+            <tr data-state="LISTEN"><td><code>LISTEN</code></td><td>服务端</td><td>端口在监听，等待 SYN</td><td class="live"></td></tr>
+            <tr data-state="SYN_SENT"><td><code>SYN_SENT</code></td><td>客户端</td><td>SYN 已发，等 SYN+ACK</td><td class="live"></td></tr>
+            <tr data-state="SYN_RCVD"><td><code>SYN_RCVD</code></td><td>服务端</td><td>收到 SYN 并回了 SYN+ACK，等最后 ACK</td><td class="live"></td></tr>
+            <tr data-state="ESTABLISHED"><td><code>ESTABLISHED</code></td><td>双方</td><td>可以收发数据</td><td class="live"></td></tr>
+            <tr data-state="FIN_WAIT_1"><td><code>FIN_WAIT_1</code></td><td>主动关闭方</td><td>FIN 已发，等对方 ACK</td><td class="live"></td></tr>
+            <tr data-state="FIN_WAIT_2"><td><code>FIN_WAIT_2</code></td><td>主动关闭方</td><td>收到 ACK，等对方 FIN</td><td class="live"></td></tr>
+            <tr data-state="CLOSE_WAIT"><td><code>CLOSE_WAIT</code></td><td>被动关闭方</td><td>收到对方 FIN，等本机应用 close()</td><td class="live"></td></tr>
+            <tr data-state="LAST_ACK"><td><code>LAST_ACK</code></td><td>被动关闭方</td><td>FIN 已发，等最后 ACK</td><td class="live"></td></tr>
+            <tr data-state="TIME_WAIT"><td><code>TIME_WAIT</code></td><td>主动关闭方</td><td>等 2MSL 后彻底关闭</td><td class="live"></td></tr>
+            <tr data-state="CLOSING"><td><code>CLOSING</code></td><td>主动关闭方</td><td>双方几乎同时发 FIN 的中间态</td><td class="live"></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>报文日志</h2>
+        <div class="log-wrap" id="log-wrap">
+          <table id="log">
+            <thead><tr><th>#</th><th>方向</th><th>标志</th><th>seq</th><th>ack</th><th>数据</th><th>备注</th></tr></thead>
+            <tbody id="log-body"></tbody>
+          </table>
+        </div>
+        <p class="tiny">ACK 不消耗序号，所以只出现在 ack 列；SYN、FIN 各消耗 1 个序号。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 面板 2：对比实验 ================= -->
+  <section id="panel-why" role="tabpanel" aria-labelledby="tab-why" hidden>
+    <div class="card exp">
+      <h2>实验一：为什么两次握手不够</h2>
+      <p class="tiny">场景：客户端曾经发起过一次连接，SYN 在网络里滞留；客户端已经放弃这次连接并回到 CLOSED。现在这条旧 SYN 才到达服务端。切换右侧的握手模式，看服务端的结局有什么不同。</p>
+
+      <div class="controls">
+        <label class="radio"><input type="radio" name="handshake-mode" value="3" checked> 三次握手（真实 TCP）</label>
+        <label class="radio"><input type="radio" name="handshake-mode" value="2"> 两次握手（假设）</label>
+        <button class="btn primary" id="play-old">播放迟到的 SYN</button>
+        <button class="btn" id="reset-old">重置</button>
+      </div>
+
+      <div class="stage mini">
+        <div class="host">
+          <h3>客户端</h3>
+          <div class="state-badge" id="mini-client-state" data-kind="closed">CLOSED</div>
+          <p class="tiny">已放弃旧连接</p>
+        </div>
+        <div class="link" id="mini-link">
+          <span class="lane-label top">客户端 → 服务端</span>
+          <span class="lane-label bottom">服务端 → 客户端</span>
+          <i class="lane-line t"></i>
+          <i class="lane-line b"></i>
+        </div>
+        <div class="host">
+          <h3>服务端</h3>
+          <div class="state-badge" id="mini-server-state" data-kind="closed">LISTEN</div>
+          <p class="tiny" id="mini-server-note">等待 SYN</p>
+        </div>
+      </div>
+
+      <div class="verdict" id="old-verdict" aria-live="polite">尚未播放。</div>
+
+      <ul class="points">
+        <li><b>序号没有双向确认。</b>服务端发出自己的 ISN 后，没有任何报文能证明客户端收到了它。三次握手的第三条 ACK 才补上这一环。</li>
+        <li><b>无法识别过期的连接请求。</b>迟到的旧 SYN 会让两次握手的服务端单方面建立连接，而客户端根本不在建连状态。</li>
+        <li>如果两条都满足，其实就必然需要三条报文：两个方向各一次「报序号 + 被确认」，第三次 ACK 可以携带数据。</li>
+      </ul>
+    </div>
+
+    <div class="card exp">
+      <h2>实验二：挥手一定是四次吗</h2>
+      <p class="tiny">区别只在于：被动关闭方收到 FIN 时，手里还有没有数据要发。</p>
+
+      <div class="controls">
+        <label class="check"><input type="checkbox" id="merge-chk"> 被动方没有剩余数据（ACK 与 FIN 合并）</label>
+        <button class="btn primary" id="play-close">播放关闭过程</button>
+        <button class="btn" id="reset-close">重置</button>
+      </div>
+
+      <div class="stage mini">
+        <div class="host">
+          <h3>主动关闭方</h3>
+          <div class="state-badge" id="close-a-state" data-kind="open">ESTABLISHED</div>
+          <p class="tiny">发起 close()</p>
+        </div>
+        <div class="link" id="close-link">
+          <span class="lane-label top">主动 → 被动</span>
+          <span class="lane-label bottom">被动 → 主动</span>
+          <i class="lane-line t"></i>
+          <i class="lane-line b"></i>
+        </div>
+        <div class="host">
+          <h3>被动关闭方</h3>
+          <div class="state-badge" id="close-b-state" data-kind="open">ESTABLISHED</div>
+          <p class="tiny">接收 close()</p>
+        </div>
+      </div>
+
+      <div class="verdict" id="close-verdict" aria-live="polite">尚未播放。</div>
+    </div>
+  </section>
+
+  <!-- ================= 面板 3：误区与前端 ================= -->
+  <section id="panel-ref" role="tabpanel" aria-labelledby="tab-ref" hidden>
+    <div class="card">
+      <h2>六个常见误区</h2>
+      <div class="myths">
+        <div class="myth"><div class="x">✕</div><p><b>「三次握手保证了数据可靠。」</b><span>握手只对齐双方的初始序号。可靠性来自序列号、确认、重传和校验和。</span></p></div>
+        <div class="myth"><div class="x">✕</div><p><b>「握手完成 = 服务端已经处理了请求。」</b><span>握手只到内核。业务代码要等 HTTP 请求抵达并交给应用之后才开始执行。</span></p></div>
+        <div class="myth"><div class="x">✕</div><p><b>「四次挥手一定发四条报文。」</b><span>被动方没有剩余数据时，ACK 与 FIN 会合并成一条，实际是三条。</span></p></div>
+        <div class="myth"><div class="x">✕</div><p><b>「FIN 之后连接就断了。」</b><span>FIN 只关闭发送方向，接收方向仍然可用，这叫半关闭。实验一的第 7 步演示了这一点。</span></p></div>
+        <div class="myth"><div class="x">✕</div><p><b>「TIME_WAIT 是网络故障。」</b><span>它是协议规定的正常状态，出现在主动关闭方。数量过多是一个症状，要看短连接为什么多、谁在主动关闭。</span></p></div>
+        <div class="myth"><div class="x">✕</div><p><b>「连接是一条端到端的线。」</b><span>连接是两端内核各自保存的一组状态。四元组（源 IP、源端口、目的 IP、目的端口）相同，才算同一条连接。</span></p></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h2>和前端的关系</h2>
+      <p class="tiny">一次 HTTPS 首屏的往返示意：</p>
+      <div class="rtt" aria-hidden="true">
+        <span class="seg dns">DNS</span>
+        <span class="seg tcp">TCP 握手 · 1 RTT</span>
+        <span class="seg tls">TLS · 1–2 RTT</span>
+        <span class="seg http">HTTP 请求/响应</span>
+      </div>
+      <p class="tiny">示意图，宽度不按真实比例；RTT 数量取自协议流程，实际耗时取决于网络与服务器。</p>
+      <ul class="points">
+        <li><b>keep-alive / 连接池</b>：复用已建立的连接，省掉后续的握手。</li>
+        <li><b>HTTP/2 多路复用</b>：一个 TCP 连接上并发多个请求，不必每个请求都建一条。</li>
+        <li><b>HTTP/3 走 QUIC（基于 UDP）</b>：把传输握手与 TLS 握手合并，首次 1 RTT，会话恢复可 0 RTT，绕开的正是 TCP + TLS 串行握手的开销。</li>
+      </ul>
+      <p class="tiny" style="margin-top:10px">线上排障信号：<code>CLOSE_WAIT</code> 堆积通常是应用没有调用 close()；<code>TIME_WAIT</code> 过多说明本机是大量短连接的主动关闭方；<code>SYN_RCVD</code> 大量堆积要排查 SYN flood。</p>
+    </div>
+  </section>
+
+  <!-- ================= 面板 4：术语全书与实战 ================= -->
+  <section id="panel-gloss" role="tabpanel" aria-labelledby="tab-gloss" hidden>
+    <div class="card">
+      <h2>这一章怎么用</h2>
+      <p class="tiny" style="max-width:none">
+        这一章按「物理图像 → 报文字段 → 序号与可靠性 → 建立与关闭 → 状态机 → 前端应用 → 抓包排障」的顺序组织。
+        每条术语给出定义、在本页中的对应位置和容易出错的边界。标有「实现差异」的内容以 Linux 和常见浏览器为准，不同系统可能不同。
+        建议配合前面的动画阅读：看到某个词，回到对应步骤，对照 seq、ack 和状态的变化。
+      </p>
+      <div class="gloss-controls">
+        <input id="gloss-q" type="search" placeholder="搜索术语或缩写，例如 TIME_WAIT、窗口、RST、MSS" aria-label="搜索术语">
+        <span class="tiny" id="gloss-count">正在统计…</span>
+      </div>
+      <nav class="gloss-nav" aria-label="术语分类">
+        <a href="#g-basic">1 基础与封装</a>
+        <a href="#g-header">2 头部字段</a>
+        <a href="#g-seq">3 序号与可靠性</a>
+        <a href="#g-open">4 建立与关闭</a>
+        <a href="#g-state">5 状态机全表</a>
+        <a href="#g-app">6 前端与应用</a>
+        <a href="#g-ops">7 抓包与排障</a>
+        <a href="#g-quiz">8 自测</a>
+      </nav>
+    </div>
+
+    <p class="gloss-empty" id="gloss-empty" hidden>没有匹配的术语，换一个关键词试试。</p>
+
+    <section class="gloss-sec" id="g-basic">
+      <h2>1. 基础与封装</h2>
+      <p class="sec-note">先建立「数据在网络里被一层层包起来」的图像，后面读字段才不会迷路。</p>
+      <div class="term-grid">
+        <article class="term">
+          <h4>TCP<span class="en">Transmission Control Protocol · 传输控制协议</span></h4>
+          <p><b>定义：</b>传输层的面向连接、可靠、全双工的字节流协议。它为两个进程提供一条双向字节通道，并负责排序、去重、确认、重传和流量控制。</p>
+          <p><b>它不负责：</b>不保留应用层消息边界，不负责加密（TLS 负责），也不保证对方业务代码已经处理。握手完成只代表内核状态就绪。</p>
+          <p class="where"><b>在本页：</b>两个主机之间所有报文、状态和 seq/ack 变化都是 TCP 的行为。</p>
+        </article>
+
+        <article class="term">
+          <h4>TCP 报文段、IP 包与以太网帧<span class="en">Segment / Datagram / Frame</span></h4>
+          <p><b>定义：</b>协议数据单元（PDU）在不同层的叫法。传输层叫报文段（segment），网络层叫 IP 数据报（datagram），链路层叫帧（frame）。</p>
+          <p><b>封装关系：</b>以太网头 14 字节 + IP 头 20 字节 + TCP 头 20~60 字节 + 数据。TCP 报文段整体是 IP 包的载荷。</p>
+          <p class="warn"><b>边界：</b>「报文」在日常语境里常被混用。严格说，本页动画画的是 TCP 报文段；抓包软件展示的是解封装后的各层。</p>
+        </article>
+
+        <article class="term">
+          <h4>四元组与连接<span class="en">4-tuple / Connection</span></h4>
+          <p><b>定义：</b>一条 TCP 连接由源 IP、源端口、目的 IP、目的端口唯一标识。连接不是网络里的一条线，而是两端内核各自维护的一组状态和缓冲区。</p>
+          <p><b>因此：</b>同一对 IP 之间可以有多条连接，只要端口不同；NAT 会改写地址和端口，并用连接跟踪表维护映射。</p>
+          <p class="where"><b>在本页：</b>客户端与服务端各保存一份状态；「关闭」删除的是各自的状态记录。</p>
+        </article>
+
+        <article class="term">
+          <h4>端口<span class="en">Port</span></h4>
+          <p><b>定义：</b>16 位整数（0–65535），用来区分同一台主机上的不同进程。服务端通常监听固定端口（如 443），客户端由内核分配临时端口。</p>
+          <p><b>IANA 分段：</b>0–1023 知名端口；1024–49151 注册端口；49152–65535 动态/私有端口。Linux 临时端口范围由 <code>ip_local_port_range</code> 决定，常见 32768–60999。</p>
+          <p class="warn"><b>排障：</b>短连接过多会耗尽临时端口，表现为 <code>Cannot assign requested address</code>；这不是带宽问题。</p>
+        </article>
+
+        <article class="term">
+          <h4>套接字<span class="en">Socket</span></h4>
+          <p><b>定义：</b>操作系统提供给应用的编程接口。监听套接字（listen socket）负责接收新连接；<code>accept()</code> 返回一个新的已连接套接字，双方用它收发数据。</p>
+          <p><b>本页对应：</b>「客户端」「服务端」两个方块可以理解成两个已连接套接字；服务端的 LISTEN 是监听套接字。</p>
+          <p class="warn"><b>边界：</b>关闭监听套接字不等于关闭已建立的连接；<code>close()</code> 一个已连接套接字才会触发 FIN（或 RST，取决于选项）。</p>
+        </article>
+
+        <article class="term">
+          <h4>字节流、全双工、面向连接、可靠<span class="en">Byte Stream / Full-duplex / Connection-oriented / Reliability</span></h4>
+          <p><b>字节流：</b>TCP 把数据看成连续字节，不保留 <code>write()</code> 的边界。一次写入可能被拆成多个报文段，多次写入也可能合并。应用层必须自己定界（长度前缀、分隔符、HTTP 的 Content-Length/chunked）。</p>
+          <p><b>全双工：</b>两个方向独立，各自有 seq、窗口和关闭状态，所以才有半关闭。</p>
+          <p><b>可靠：</b>靠序号、确认、校验和、超时重传、去重和排序共同实现，不是靠某一条报文。</p>
+        </article>
+
+        <article class="term">
+          <h4>MTU、MSS 与路径 MTU 发现<span class="en">Maximum Transmission Unit / Maximum Segment Size / PMTUD</span></h4>
+          <p><b>MTU：</b>链路层一次能承载的最大 IP 包大小，以太网常见 1500 字节。<b>MSS：</b>TCP 载荷的最大长度，通常 = MTU − IP 头 − TCP 头 = 1500 − 20 − 20 = 1460。</p>
+          <p><b>协商：</b>双方在 SYN 的选项里各自声明 MSS，实际发送取较小值。中间链路 MTU 更小时，靠 PMTUD 或 IP 分片处理。</p>
+          <p class="warn"><b>边界：</b>MSS 是 TCP 层概念，MTU 是链路层概念；说「MSS 1500」是常见错误。</p>
+        </article>
+
+        <article class="term">
+          <h4>RTT、RTO、MSL 与 2MSL<span class="en">Round-Trip Time / Retransmission Timeout / Maximum Segment Lifetime</span></h4>
+          <p><b>RTT：</b>一个报文往返所需时间。<b>RTO：</b>发出数据后等待 ACK 的超时时间，按 RTT 动态估算（RFC 6298），拥塞时会指数退避。</p>
+          <p><b>MSL：</b>报文在网络中允许存活的最长时间。<b>2MSL：</b>TIME_WAIT 的等待时长，确保最后一个 ACK 能重发、旧报文能过期。</p>
+          <p class="warn"><b>实现差异：</b>Linux 的 TIME_WAIT 固定约 60 秒；<code>tcp_fin_timeout</code> 控制的是 FIN_WAIT_2，不是 TIME_WAIT。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="gloss-sec" id="g-header">
+      <h2>2. 头部字段与标志位</h2>
+      <p class="sec-note">TCP 头部最小 20 字节，最大 60 字节。下面按字段逐个拆开；把字段和前面动画里的报文气泡对照着看。</p>
+      <div class="term-grid">
+        <article class="term" style="grid-column:1/-1">
+          <h4>TCP 头部总览（最小 20 字节）</h4>
+          <table>
+            <thead><tr><th>字段</th><th>长度</th><th>作用</th><th>本页对应</th></tr></thead>
+            <tbody>
+              <tr><td>源端口 / 目的端口</td><td>各 16 位</td><td>定位两端进程</td><td>未画出，示例为 51234 → 443</td></tr>
+              <tr><td>序号 seq</td><td>32 位</td><td>本段第一个数据字节在字节流中的位置</td><td>100、300、501…</td></tr>
+              <tr><td>确认号 ack</td><td>32 位</td><td>期望收到的下一个字节</td><td>101、301、501…</td></tr>
+              <tr><td>数据偏移</td><td>4 位</td><td>头部长度，单位 4 字节</td><td>无选项时为 5（20 字节）</td></tr>
+              <tr><td>保留</td><td>4 位</td><td>保留，置 0</td><td>—</td></tr>
+              <tr><td>标志位</td><td>8 位</td><td>SYN/ACK/FIN/RST/PSH/URG/ECE/CWR</td><td>报文气泡上的文字</td></tr>
+              <tr><td>窗口</td><td>16 位</td><td>接收方还能接收多少字节</td><td>未画出</td></tr>
+              <tr><td>校验和</td><td>16 位</td><td>检测传输错误</td><td>未画出</td></tr>
+              <tr><td>紧急指针</td><td>16 位</td><td>URG=1 时指向紧急数据</td><td>未画出</td></tr>
+              <tr><td>选项</td><td>0–40 字节</td><td>MSS、SACK、时间戳、窗口缩放</td><td>真实握手通常有</td></tr>
+            </tbody>
+          </table>
+        </article>
+
+        <article class="term">
+          <h4>序号<span class="en">Sequence Number · seq</span></h4>
+          <p><b>定义：</b>32 位无符号数，表示本报文段第一个数据字节在发送方字节流中的编号。若本报文段不带数据，序号仍是发送方当前的 SND.NXT。</p>
+          <p><b>消耗规则：</b>数据消耗 len 个序号；SYN 消耗 1 个；FIN 消耗 1 个；纯 ACK 不消耗。因此 SYN(seq=100) 之后，下一次发送的序号是 101。</p>
+          <p class="warn"><b>回绕：</b>按 2³² 取模。比较新旧序号不能用简单数值大小，协议用模运算判断。</p>
+        </article>
+
+        <article class="term">
+          <h4>确认号<span class="en">Acknowledgment Number · ack</span></h4>
+          <p><b>定义：</b>期望收到的下一个字节编号，等于「已连续收到的最后一个字节 + 1」。它确认的是这个编号之前的所有字节，而不是某一条报文。</p>
+          <p><b>有效条件：</b>只有 ACK 标志位为 1 时才有效。接收方只接受 <code>SND.UNA &lt; ack ≤ SND.NXT</code> 的确认，不能确认还没发出去的数据。</p>
+          <p><b>例子：</b>客户端 SYN 占掉 100，所以服务端回 ack=101；服务端发 200 字节 seq=301，客户端回 ack=501。</p>
+        </article>
+
+        <article class="term">
+          <h4>数据偏移与保留位<span class="en">Data Offset / Reserved</span></h4>
+          <p><b>数据偏移：</b>4 位，单位是 4 字节。值 5 表示 20 字节，值 15 表示 60 字节。它告诉接收方「头部到此为止，后面是数据」。</p>
+          <p><b>保留：</b>RFC 9293 定义为 4 位，必须置 0。老教材里可能画成 3 位或 6 位，这是历史版本差异；读报文时以实际位宽为准。</p>
+        </article>
+
+        <article class="term">
+          <h4>标志位总表<span class="en">Control Flags</span></h4>
+          <table>
+            <thead><tr><th>位</th><th>值</th><th>名称</th><th>含义</th></tr></thead>
+            <tbody>
+              <tr><td>7</td><td><code>0x80</code></td><td>CWR</td><td>拥塞窗口已减小</td></tr>
+              <tr><td>6</td><td><code>0x40</code></td><td>ECE</td><td>收到拥塞标记</td></tr>
+              <tr><td>5</td><td><code>0x20</code></td><td>URG</td><td>紧急指针有效</td></tr>
+              <tr><td>4</td><td><code>0x10</code></td><td>ACK</td><td>确认号有效</td></tr>
+              <tr><td>3</td><td><code>0x08</code></td><td>PSH</td><td>尽快交给应用</td></tr>
+              <tr><td>2</td><td><code>0x04</code></td><td>RST</td><td>复位连接</td></tr>
+              <tr><td>1</td><td><code>0x02</code></td><td>SYN</td><td>同步序号</td></tr>
+              <tr><td>0</td><td><code>0x01</code></td><td>FIN</td><td>发送方数据结束</td></tr>
+            </tbody>
+          </table>
+          <p class="where"><b>组合示例：</b><code>0x02</code> = SYN；<code>0x12</code> = SYN+ACK；<code>0x10</code> = ACK；<code>0x11</code> = FIN+ACK；<code>0x18</code> = PSH+ACK。</p>
+        </article>
+
+        <article class="term">
+          <h4>SYN<span class="en">Synchronize Sequence Numbers</span></h4>
+          <p><b>作用：</b>同步初始序号。SYN=1 表示「这是我的起始序号，请从这里开始编号」，同时告诉对方自己希望使用的连接参数（MSS、窗口缩放等）。</p>
+          <p><b>规则：</b>SYN 消耗 1 个序号；SYN+ACK 同时完成「报自己的 ISN」和「确认对方 ISN」。普通握手通常不在 SYN 里带数据；TCP Fast Open 是例外。</p>
+          <p class="warn"><b>攻击面：</b>只发 SYN 不回 ACK 会留下半开连接，形成 SYN flood；防御手段包括 SYN 队列、SYN cookies、限速。</p>
+        </article>
+
+        <article class="term">
+          <h4>ACK<span class="en">Acknowledgment</span></h4>
+          <p><b>作用：</b>确认对方的数据。ACK=1 时确认号字段有效；除了第一个 SYN，几乎所有报文都会置 ACK。</p>
+          <p><b>捎带确认：</b>有数据要发时，ACK 可以和数据合并在同一报文里，不必单独发。纯 ACK 不消耗序号。</p>
+          <p><b>延迟确认：</b>接收方可能等一小段时间（Linux 常见 40–200 毫秒）再确认，期望捎带在回程数据里，减少报文数；与 Nagle 同时出现时可能造成可感知延迟。</p>
+        </article>
+
+        <article class="term">
+          <h4>FIN<span class="en">Finish</span></h4>
+          <p><b>作用：</b>发送方没有更多数据了，关闭自己的发送方向。对方仍可继续发送，这叫半关闭。</p>
+          <p><b>规则：</b>FIN 消耗 1 个序号，所以需要被确认；未确认会重传。FIN 通常与 ACK 合并。</p>
+          <p class="warn"><b>边界：</b>FIN 不等于连接立即消失；主动关闭方还要经过 FIN_WAIT_1/2 和 TIME_WAIT。</p>
+        </article>
+
+        <article class="term">
+          <h4>RST<span class="en">Reset</span></h4>
+          <p><b>作用：</b>立即复位连接，表示「这个连接不成立或不能继续」。收到 RST 的一方直接删除状态，不走四次挥手。</p>
+          <p><b>常见触发：</b>端口没有监听；收到不属于任何连接的数据；应用崩溃；<code>SO_LINGER</code> 设为 0 后 close；半开连接上收到数据；中间设备超时后主动发 RST。</p>
+          <p class="warn"><b>前端现象：</b>浏览器报 <code>ERR_CONNECTION_RESET</code> 或 <code>ECONNRESET</code>，通常是连接被重置，不是 DNS 或证书问题。</p>
+        </article>
+
+        <article class="term">
+          <h4>PSH 与 URG<span class="en">Push / Urgent</span></h4>
+          <p><b>PSH：</b>提示接收方尽快把数据交给应用，不要等待填满缓冲区。它不是消息边界，现代实现经常自动设置或忽略，不能用来分帧。</p>
+          <p><b>URG + 紧急指针：</b>标记紧急数据的位置。实际使用极少，且不同实现行为不一致；新协议不应依赖。</p>
+        </article>
+
+        <article class="term">
+          <h4>ECE 与 CWR<span class="en">ECN-Echo / Congestion Window Reduced</span></h4>
+          <p><b>背景：</b>ECN（显式拥塞通知）。路由器在拥塞时标记报文，而不是直接丢包。</p>
+          <p><b>ECE：</b>接收方回显「我收到了拥塞标记」；<b>CWR：</b>发送方表示「我已经减小拥塞窗口」。二者在 SYN 中协商是否启用。</p>
+          <p class="warn"><b>本页未演示：</b>它属于拥塞控制，不影响握手和挥手的主线。</p>
+        </article>
+
+        <article class="term">
+          <h4>窗口<span class="en">Window</span></h4>
+          <p><b>定义：</b>16 位接收窗口，表示「从确认号开始，我还能接收多少字节」。它是流量控制，不是拥塞控制。</p>
+          <p><b>扩展：</b>窗口缩放选项把 16 位左移最多 14 位，突破 65535 字节限制。零窗口表示接收缓冲区满，发送方停止发送并周期性发窗口探测。</p>
+          <p class="warn"><b>注意：</b>抓包里的窗口值可能已经被缩放；Wireshark 会分别显示原始值和计算值。</p>
+        </article>
+
+        <article class="term">
+          <h4>校验和与伪头部<span class="en">Checksum / Pseudo-header</span></h4>
+          <p><b>计算范围：</b>伪头部（源 IP、目的 IP、协议号、TCP 长度）+ TCP 头部 + 数据，按 16 位反码求和。</p>
+          <p><b>作用：</b>检测比特错误，不提供认证，也不防篡改。接收方校验失败通常直接丢弃，不回复。</p>
+          <p class="warn"><b>抓包注意：</b>启用校验和卸载（checksum offload）时，本机抓到的出站报文校验和可能显示错误，这是网卡还没计算，不代表链路出错。</p>
+        </article>
+
+        <article class="term">
+          <h4>选项<span class="en">TCP Options</span></h4>
+          <p><b>常见选项：</b>MSS（最大段长度）、SACK permitted（允许选择确认）、Timestamps（RTT 测量与 PAWS）、Window Scale（窗口缩放）、NOP/EOL（对齐填充）。</p>
+          <p><b>长度：</b>最多 40 字节，所以 TCP 头最大 60 字节。选项通常出现在 SYN 中；建立后不一定每条都带。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="gloss-sec" id="g-seq">
+      <h2>3. 序号、确认与可靠性</h2>
+      <p class="sec-note">这一节解释「为什么丢包了还能恢复」「为什么 ack 不能跳过缺口」「窗口到底限制了什么」。</p>
+      <div class="term-grid">
+        <article class="term">
+          <h4>ISN 初始序号<span class="en">Initial Sequence Number</span></h4>
+          <p><b>定义：</b>每条连接、每个方向随机选择的初始序号。真实值是 32 位随机数，例如 2893451234；本页用 100 和 300 只是方便心算。</p>
+          <p><b>为什么随机：</b>防止旧连接的报文被新连接误收，也提高攻击者猜测序号的难度（RFC 6528）。</p>
+          <p><b>规则：</b>SYN 本身占用 ISN 这一个序号，所以第一个数据字节从 ISN+1 开始。</p>
+        </article>
+
+        <article class="term">
+          <h4>四个关键变量<span class="en">SND.UNA / SND.NXT / SND.WND / RCV.NXT</span></h4>
+          <p><b>SND.UNA：</b>最早一个已发送但未确认的序号。<b>SND.NXT：</b>下一个要发送的序号。<b>SND.WND：</b>发送窗口。<b>RCV.NXT：</b>下一个期望接收的序号。</p>
+          <p><b>关系：</b>已发送未确认的字节数 = SND.NXT − SND.UNA；它不能超过对方通告的窗口。收到合法 ACK 后 SND.UNA 前移。</p>
+          <p class="where"><b>在本页：</b>界面上的 snd.nxt / rcv.nxt 就是其中两个变量。</p>
+        </article>
+
+        <article class="term">
+          <h4>累计确认<span class="en">Cumulative Acknowledgment</span></h4>
+          <p><b>定义：</b>ack=n 表示「n 之前的所有字节都收到了」。即使中间有乱序到达的更高序号，也不能越过缺口确认。</p>
+          <p><b>例子：</b>收到 1–100 和 201–300，但 101–200 缺失，ack 仍然停在 101；发送方会重传 101–200。</p>
+          <p class="warn"><b>与 SACK 的区别：</b>SACK 只告诉发送方「哪些块收到了」，ack 字段仍表示连续前缀，不会跳过缺口。</p>
+        </article>
+
+        <article class="term">
+          <h4>选择确认<span class="en">SACK · Selective Acknowledgment</span></h4>
+          <p><b>定义：</b>选择确认扩展（RFC 2018）。接收方在选项里报告已收到的离散块，发送方只重传缺失部分。</p>
+          <p><b>协商：</b>双方在 SYN 中交换 SACK permitted 选项；没协商成功就不能用。</p>
+          <p><b>抓包：</b>Wireshark 的 TCP 选项里会显示 SACK blocks，例如 left edge / right edge。</p>
+        </article>
+
+        <article class="term">
+          <h4>重复 ACK 与快速重传<span class="en">Duplicate ACK / Fast Retransmit</span></h4>
+          <p><b>重复 ACK：</b>接收方反复收到乱序报文，每次都回同一个 ack（缺口位置）。</p>
+          <p><b>快速重传：</b>发送方连续收到 3 个重复 ACK，就认为该段丢失，立即重传，不等 RTO 到期（RFC 5681）。</p>
+          <p class="warn"><b>边界：</b>3 是经典阈值；SACK、重复报文和乱序都可能影响判断，抓包里要结合序列号看。</p>
+        </article>
+
+        <article class="term">
+          <h4>滑动窗口与流量控制<span class="en">Sliding Window / Flow Control</span></h4>
+          <p><b>发送窗口：</b>发送方在未收到确认前最多能发出的字节数，取「拥塞窗口 cwnd」和「接收窗口 rwnd」的较小值。</p>
+          <p><b>滑动：</b>收到 ACK 后窗口左边界右移，新的序号进入可发送范围，所以叫滑动窗口。</p>
+          <p><b>流量控制：</b>接收方通过窗口字段限制发送方，防止自己的缓冲区被淹没。窗口为 0 时发送方暂停，并定期发零窗口探测。</p>
+        </article>
+
+        <article class="term">
+          <h4>超时重传与 RTO<span class="en">Retransmission / Retransmission Timeout</span></h4>
+          <p><b>机制：</b>发送数据时启动重传定时器；在 RTO 内没收到确认就重传，并指数退避（RTO 翻倍）。</p>
+          <p><b>RTO 估算：</b>用 RTT 的平滑值和偏差计算（RFC 6298），不是固定值。网络抖动大时 RTO 会变大。</p>
+          <p class="warn"><b>边界：</b>重传的报文序号不变；接收方靠序号去重。超时重传和快速重传是两条不同的路径。</p>
+        </article>
+
+        <article class="term">
+          <h4>拥塞控制<span class="en">Congestion Control</span></h4>
+          <p><b>定义：</b>发送方根据网络拥塞程度调整发送速率，避免把网络压垮。核心变量是 cwnd（拥塞窗口）和 ssthresh（慢启动阈值）。</p>
+          <p><b>四个阶段：</b>慢启动（cwnd 指数增长）→ 拥塞避免（线性增长）→ 快速重传/快速恢复 → 超时后回到慢启动。经典算法是 Reno，现代内核常用 CUBIC，部分场景用 BBR。</p>
+          <p class="warn"><b>与流量控制的区别：</b>流量控制保护接收方，拥塞控制保护网络。本页只演示握手/挥手，没有展开拥塞控制。</p>
+        </article>
+
+        <article class="term">
+          <h4>乱序、重复与重组<span class="en">Out-of-order / Duplicate / Reassembly</span></h4>
+          <p><b>乱序：</b>报文走不同路径或重传，到达顺序可能与发送顺序不同。接收方按 seq 放入重组队列，等缺口补齐再按序交给应用。</p>
+          <p><b>重复：</b>重传可能让同一序号到达两次，接收方按序号去重，并再次确认。</p>
+          <p><b>结果：</b>应用看到的是有序、无重复的字节流；代价是乱序期间要占用接收缓冲区。</p>
+        </article>
+
+        <article class="term">
+          <h4>消息边界与粘包<span class="en">Message Framing / Sticky Packets</span></h4>
+          <p><b>问题：</b>TCP 是字节流，<code>send()</code> 一次不等于一个报文段，<code>recv()</code> 一次也不等于一条消息。粘包/拆包是应用层必须处理的现象，不是 TCP 的 bug。</p>
+          <p><b>常见方案：</b>固定长度；长度前缀（二进制协议常用）；分隔符（如换行）；自描述格式（HTTP 头 + Content-Length / chunked）。</p>
+          <p class="where"><b>前端类比：</b>WebSocket 的 message 边界由协议层提供；裸 TCP 没有，需要自己定义。</p>
+        </article>
+
+        <article class="term">
+          <h4>Nagle 算法与延迟确认<span class="en">Nagle Algorithm / Delayed ACK</span></h4>
+          <p><b>Nagle：</b>发送方把小数据攒起来，等前一个未确认数据被确认后再发，减少小包数量。低延迟场景常用 <code>TCP_NODELAY</code> 关闭。</p>
+          <p><b>延迟确认：</b>接收方延迟发送 ACK，期望捎带数据。两者叠加可能出现约 40 毫秒的延迟，常见于 request/response 小包场景。</p>
+          <p class="warn"><b>边界：</b>Nagle 是发送方算法，延迟确认是接收方算法；不是所有实现和所有流量都会触发。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="gloss-sec" id="g-open">
+      <h2>4. 连接建立与关闭</h2>
+      <p class="sec-note">这一节把三次握手、四次挥手和所有相关状态放到一起，并解释常见的线上异常。</p>
+      <div class="term-grid">
+        <article class="term">
+          <h4>三次握手<span class="en">Three-way Handshake</span></h4>
+          <p><b>流程：</b>SYN(seq=x) → SYN+ACK(seq=y, ack=x+1) → ACK(ack=y+1)。只用 1 个 RTT。</p>
+          <p><b>目标：</b>双方各报一次 ISN，并各确认一次对方的 ISN；同时确认双向可达。第三条 ACK 可以携带数据。</p>
+          <p><b>为什么不是两次：</b>服务端发出 SYN+ACK 后，无法确认客户端收到了自己的 ISN；迟到的旧 SYN 还可能让服务端单方面建立幽灵连接。</p>
+          <p><b>为什么不是四次：</b>SYN 和 ACK 可以合并在一条报文里，第二次握手已经同时完成两件事。</p>
+        </article>
+
+        <article class="term">
+          <h4>半开连接<span class="en">Half-open Connection</span></h4>
+          <p><b>定义：</b>一方认为连接存在，另一方已经不存在（崩溃、断网、超时）。典型是服务端在 SYN_RCVD 或 ESTABLISHED，客户端已经消失。</p>
+          <p><b>后果：</b>占用服务端资源；发送数据可能收到 RST；靠 keepalive、超时或应用层心跳清理。</p>
+        </article>
+
+        <article class="term">
+          <h4>SYN 队列、accept 队列与 backlog<span class="en">SYN Queue / Accept Queue / Backlog</span></h4>
+          <p><b>SYN 队列：</b>收到 SYN、还没完成三次握手的连接（SYN_RCVD）。<b>accept 队列：</b>已完成握手、等待应用 <code>accept()</code> 的连接。</p>
+          <p><b>backlog：</b><code>listen(fd, backlog)</code> 的参数，影响队列上限；Linux 还受 <code>net.core.somaxconn</code> 限制。应用 accept 太慢会导致队列满，新连接被丢弃或超时。</p>
+          <p class="warn"><b>排障：</b>SYN_RCVD 多可能是 SYN flood 或队列不足；ESTABLISHED 多但应用没处理，可能是 accept 队列积压。</p>
+        </article>
+
+        <article class="term">
+          <h4>SYN flood 与 SYN cookies<span class="en">SYN Flood / SYN Cookies</span></h4>
+          <p><b>SYN flood：</b>攻击者大量发送 SYN 但不回最后 ACK，耗尽服务端的半开连接队列。</p>
+          <p><b>SYN cookies：</b>服务端不保存半开状态，把连接信息编码进自己的 ISN；收到 ACK 后再重建状态。开启后能缓解队列耗尽，但会丢失部分选项信息。</p>
+          <p><b>其他防御：</b>增大 <code>tcp_max_syn_backlog</code>、缩短 SYN 重传、限速、上游清洗。</p>
+        </article>
+
+        <article class="term">
+          <h4>四次挥手与半关闭<span class="en">Four-way Handshake / Half-close</span></h4>
+          <p><b>流程：</b>主动方 FIN → 被动方 ACK → 被动方 FIN → 主动方 ACK。两个方向各关一次，所以是四次。</p>
+          <p><b>半关闭：</b>收到 FIN 只表示对方不再发送，本机仍可发送数据；这就是第 7 步还能传 50 字节的原因。</p>
+          <p><b>合并：</b>被动方没有剩余数据时，ACK 与 FIN 可以合并成一条 FIN+ACK，抓包里只看到三条，但语义仍是两个方向各自关闭。</p>
+        </article>
+
+        <article class="term">
+          <h4>TIME_WAIT 与 2MSL<span class="en">TIME_WAIT / 2MSL</span></h4>
+          <p><b>谁进入：</b>主动关闭方，在发出最后一个 ACK 后进入 TIME_WAIT，等待 2MSL 才删除连接。</p>
+          <p><b>两个作用：</b>① 最后一个 ACK 丢失时，对方会重传 FIN，TIME_WAIT 中还能再回 ACK；② 让这条四元组的旧报文在网络中过期，避免新连接收到残留数据。</p>
+          <p><b>实现差异：</b>Linux 约 60 秒；Windows 默认约 120 秒（可配置）。TIME_WAIT 不是错误，数量多要看短连接和主动关闭方。</p>
+          <p class="warn"><b>调优误区：</b><code>tcp_tw_recycle</code> 在 NAT 环境下会导致连接异常，已在 Linux 4.12 移除，不要使用；<code>tcp_tw_reuse</code> 只影响出站连接复用。</p>
+        </article>
+
+        <article class="term">
+          <h4>CLOSE_WAIT<span class="en">CLOSE_WAIT</span></h4>
+          <p><b>含义：</b>被动关闭方收到对方的 FIN 并回了 ACK，但本机应用还没有调用 <code>close()</code>。</p>
+          <p><b>堆积原因：</b>应用忘记关闭、连接池泄漏、异常分支没有释放、阻塞在读/写、业务处理太慢。它是应用层问题，不是网络层问题。</p>
+          <p><b>处理：</b>检查代码路径和连接池；确认 <code>close()</code>/<code>destroy()</code> 在 finally 中执行；必要时重启泄漏进程并修复根因。</p>
+        </article>
+
+        <article class="term">
+          <h4>RST 关闭<span class="en">Reset Close</span></h4>
+          <p><b>与 FIN 的区别：</b>FIN 是正常关闭，给对方处理时间；RST 是立即终止，可能丢数据。</p>
+          <p><b>常见场景：</b>连接不存在、端口未监听、应用崩溃、<code>SO_LINGER=0</code>、半开连接收到数据、负载均衡或防火墙超时。</p>
+          <p class="warn"><b>排查：</b>看 RST 是谁发的、在哪个方向、之前的报文是什么；不要只凭「有 RST」判断是网络故障。</p>
+        </article>
+
+        <article class="term">
+          <h4>同时打开、同时关闭与 CLOSING<span class="en">Simultaneous Open / Close / CLOSING</span></h4>
+          <p><b>同时打开：</b>双方几乎同时发 SYN，双方都经历 SYN_SENT → SYN_RCVD → ESTABLISHED；实际极少见。</p>
+          <p><b>同时关闭：</b>双方几乎同时发 FIN。若在 FIN_WAIT_1 收到对方的 FIN，但自己的 FIN 还没有被确认，就进入 CLOSING；收到对自己 FIN 的 ACK 后再进入 TIME_WAIT。</p>
+          <p class="warn"><b>学习边界：</b>本页只演示「客户端主动关闭、服务端被动关闭」的主线，没有画这两种分支。</p>
+        </article>
+
+        <article class="term">
+          <h4>TCP keepalive 与 HTTP keep-alive<span class="en">TCP Keepalive / HTTP Keep-alive</span></h4>
+          <p><b>TCP keepalive：</b>内核在连接空闲一段时间后发送探测包，判断对端是否还活着。Linux 默认空闲 7200 秒才开始，通常需要应用层心跳补充。</p>
+          <p><b>HTTP keep-alive：</b>复用已建立的 TCP 连接发送多个 HTTP 请求，省掉重复握手。浏览器和服务器通过协议版本/Connection 头协商，空闲超时后关闭。</p>
+          <p class="warn"><b>第三个概念：</b><code>fetch(..., {keepalive:true})</code> 是让请求在页面卸载后继续完成，不是 TCP keepalive，也不是 HTTP 连接复用。</p>
+        </article>
+
+        <article class="term">
+          <h4>SO_LINGER 与 SO_REUSEADDR<span class="en">Socket Options</span></h4>
+          <p><b>SO_LINGER：</b>控制 <code>close()</code> 的行为。开启并设超时，close 会等待数据发完；设为 0 会立即发 RST，可能丢数据。</p>
+          <p><b>SO_REUSEADDR：</b>允许绑定处于 TIME_WAIT 的本地地址/端口，方便服务重启；不等于允许多个进程同时监听同一端口（那通常是 <code>SO_REUSEPORT</code>）。</p>
+          <p class="warn"><b>边界：</b>这些是套接字选项，不是 TCP 协议字段；不同语言/框架的默认值不同。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="gloss-sec" id="g-state">
+      <h2>5. 状态机全表</h2>
+      <p class="sec-note">状态属于单端，不属于连接整体。同一时刻两端可以处于不同状态；排障时先确认「哪一端、在哪个状态」。</p>
+      <div class="term-grid">
+        <article class="term" style="grid-column:1/-1">
+          <h4>TCP 状态、进入条件、离开条件与排障含义</h4>
+          <table>
+            <thead><tr><th>状态</th><th>哪一方</th><th>进入条件</th><th>离开条件</th><th>排障含义</th></tr></thead>
+            <tbody>
+              <tr><td><code>CLOSED</code></td><td>双方</td><td>初始状态；连接删除后</td><td>主动打开 → SYN_SENT；被动打开 → LISTEN</td><td>没有连接记录</td></tr>
+              <tr><td><code>LISTEN</code></td><td>服务端</td><td>调用 listen()</td><td>收到 SYN → SYN_RCVD</td><td>端口在监听，等待连接</td></tr>
+              <tr><td><code>SYN_SENT</code></td><td>客户端</td><td>发出 SYN</td><td>收到 SYN+ACK → ESTABLISHED；超时 → CLOSED</td><td>大量出现说明 SYN 没有回应：目标不可达、防火墙丢包、端口未开</td></tr>
+              <tr><td><code>SYN_RCVD</code></td><td>服务端</td><td>收到 SYN 并回 SYN+ACK</td><td>收到 ACK → ESTABLISHED；收到 RST → LISTEN；超时 → CLOSED</td><td>大量堆积可能是 SYN flood、backlog 不足或客户端不回 ACK</td></tr>
+              <tr><td><code>ESTABLISHED</code></td><td>双方</td><td>三次握手完成</td><td>主动关闭 → FIN_WAIT_1；收到 FIN → CLOSE_WAIT</td><td>可以收发数据</td></tr>
+              <tr><td><code>FIN_WAIT_1</code></td><td>主动关闭方</td><td>发出 FIN</td><td>收到 ACK → FIN_WAIT_2；收到 FIN+ACK → TIME_WAIT；同时关闭 → CLOSING</td><td>FIN 已发，等对方确认</td></tr>
+              <tr><td><code>FIN_WAIT_2</code></td><td>主动关闭方</td><td>收到对方对自己 FIN 的 ACK</td><td>收到对方 FIN → TIME_WAIT；超时 → CLOSED</td><td>大量堆积说明对端一直不发 FIN（应用没 close）</td></tr>
+              <tr><td><code>CLOSE_WAIT</code></td><td>被动关闭方</td><td>收到对方 FIN 并回 ACK</td><td>本机应用 close() → LAST_ACK</td><td>堆积几乎总是应用没有关闭连接</td></tr>
+              <tr><td><code>CLOSING</code></td><td>主动关闭方</td><td>同时关闭：发出 FIN 后收到对方 FIN，但自己的 FIN 还未被确认</td><td>收到对方对自己 FIN 的 ACK → TIME_WAIT</td><td>少见，属于正常分支</td></tr>
+              <tr><td><code>LAST_ACK</code></td><td>被动关闭方</td><td>本机应用 close() 后发出 FIN</td><td>收到最后 ACK → CLOSED</td><td>等主动方确认自己的 FIN</td></tr>
+              <tr><td><code>TIME_WAIT</code></td><td>主动关闭方</td><td>发出最后一个 ACK</td><td>等待 2MSL → CLOSED</td><td>正常状态；数量过多看短连接与主动关闭方</td></tr>
+            </tbody>
+          </table>
+          <p class="warn"><b>命名差异：</b>不同工具的输出格式不同，例如 <code>ss</code> 显示 <code>TIME-WAIT</code>，<code>netstat</code> 可能显示 <code>TIME_WAIT</code>；含义相同。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="gloss-sec" id="g-app">
+      <h2>6. 前端与应用</h2>
+      <p class="sec-note">把 TCP 放回一次真实页面加载里：DNS、TCP、TLS、HTTP 各自占多少往返，哪些问题会表现成「接口慢」。</p>
+      <div class="term-grid">
+        <article class="term">
+          <h4>HTTP/1.1 持久连接<span class="en">Persistent Connection / Pipelining</span></h4>
+          <p><b>持久连接：</b>HTTP/1.1 默认复用 TCP 连接，响应通过 Content-Length 或 chunked 定界。</p>
+          <p><b>队头阻塞：</b>同一连接上请求按序处理，前一个响应慢会挡住后面的响应；浏览器因此对每个域名开多个连接（HTTP/1.1 常见 6 个）。</p>
+        </article>
+
+        <article class="term">
+          <h4>HTTP/2 多路复用<span class="en">Multiplexing / Stream / HPACK</span></h4>
+          <p><b>多路复用：</b>一个 TCP 连接上跑多个 stream，每个 stream 有独立 ID，帧可以交错发送，解决了 HTTP/1.1 的应用层队头阻塞。</p>
+          <p><b>仍有 TCP 层队头阻塞：</b>一个 TCP 报文段丢失，内核要等重传，所有 stream 都被挡住；这是 HTTP/3 改走 QUIC 的动机之一。</p>
+          <p><b>HPACK：</b>压缩头部，减少重复头部开销。</p>
+        </article>
+
+        <article class="term">
+          <h4>HTTP/3 与 QUIC<span class="en">HTTP/3 / QUIC</span></h4>
+          <p><b>传输：</b>基于 UDP，在用户态实现可靠传输、流控制和拥塞控制；TLS 1.3 集成在握手里。</p>
+          <p><b>握手：</b>首次 1-RTT，会话恢复可 0-RTT；每个 stream 独立，丢包只影响该 stream，避免 TCP 层队头阻塞；支持连接迁移（换网络不断连）。</p>
+          <p class="warn"><b>注意：</b>QUIC 不是 TCP，本页的握手/挥手不适用；但「可靠传输、序号、确认、窗口」的思想仍然相通。</p>
+        </article>
+
+        <article class="term">
+          <h4>TLS 握手与往返次数<span class="en">TLS Handshake / RTT</span></h4>
+          <p><b>TLS 1.2：</b>完整握手通常 2-RTT（在 TCP 握手之后）。<b>TLS 1.3：</b>1-RTT，支持 0-RTT 会话恢复。</p>
+          <p><b>叠加：</b>HTTPS 首屏 = TCP 握手 1 RTT + TLS 握手 + HTTP 请求；HTTP/3 把传输和 TLS 合并，减少往返。</p>
+        </article>
+
+        <article class="term">
+          <h4>WebSocket 与 SSE<span class="en">WebSocket / Server-Sent Events</span></h4>
+          <p><b>WebSocket：</b>通过 HTTP Upgrade 建立，之后是全双工帧协议；底层仍是一条 TCP 连接。适合聊天、协同编辑、实时推送。</p>
+          <p><b>SSE：</b>服务器单向推送文本事件流，基于普通 HTTP；自动重连，适合通知、日志流。</p>
+          <p class="warn"><b>边界：</b>WebSocket 的 message 边界是协议层提供的；裸 TCP 没有。</p>
+        </article>
+
+        <article class="term">
+          <h4>连接池与浏览器并发限制<span class="en">Connection Pool</span></h4>
+          <p><b>浏览器：</b>对同一 origin 的并发连接数有限制（HTTP/1.1 常见 6 个；HTTP/2 通常复用 1 条连接）。</p>
+          <p><b>服务端连接池：</b>数据库/HTTP 客户端复用连接，减少握手和 TIME_WAIT；池大小要与下游承载能力匹配。</p>
+          <p class="warn"><b>超时对齐：</b>浏览器、负载均衡、服务端的空闲超时不一致，会在复用连接时触发 RST。让上游超时略大于下游，或使用健康检查/重试。</p>
+        </article>
+
+        <article class="term">
+          <h4>NAT 与端口耗尽<span class="en">NAT / Ephemeral Port Exhaustion</span></h4>
+          <p><b>NAT：</b>改写源 IP/端口并维护映射表；表中的条目也有超时。NAT 超时后收到旧连接的数据，可能回 RST。</p>
+          <p><b>端口耗尽：</b>大量短连接 + TIME_WAIT 会占满临时端口；表现为无法新建连接。解决方向是复用连接、扩大端口范围、缩短不必要的等待，而不是盲目开启危险的重用选项。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="gloss-sec" id="g-ops">
+      <h2>7. 抓包与排障</h2>
+      <p class="sec-note">「学会」的最后一公里是能自己抓到并读懂报文。下面的命令按平台分组，可直接复制使用。</p>
+      <div class="term-grid">
+        <article class="term">
+          <h4>抓包工具与抓包点<span class="en">Wireshark / tcpdump / tshark</span></h4>
+          <p><b>Wireshark：</b>图形化，支持 Follow TCP Stream、专家信息、TCP 分析（重传、重复 ACK、零窗口）。<b>tcpdump：</b>命令行，适合服务器。<b>tshark：</b>Wireshark 的命令行版本，适合脚本化过滤。</p>
+          <p><b>抓哪里：</b>客户端、服务端、中间设备看到的可能不同；先确认抓包点，再判断丢包方向。抓本机回环流量要选择 loopback 接口。</p>
+          <p><b>看什么：</b>三次握手的 Flags/Seq/Ack；四次挥手的 FIN/ACK；重传、RST 和窗口变化。</p>
+        </article>
+
+        <article class="term">
+          <h4>查看连接状态的命令<span class="en">ss / netstat / Get-NetTCPConnection</span></h4>
+          <span class="cmd"># Linux / macOS
+ss -tan
+ss -tan state time-wait
+ss -tan state close-wait
+
+# Windows PowerShell
+Get-NetTCPConnection -State TimeWait
+Get-NetTCPConnection -LocalPort 3000
+netstat -ano | findstr TIME_WAIT</span>
+          <p><b>用法：</b>先按状态聚合数量，再按本地/远端端口定位进程；<code>netstat -ano</code> 的最后一列是 PID。</p>
+        </article>
+
+        <article class="term">
+          <h4>抓包与过滤命令<span class="en">tcpdump / tshark</span></h4>
+          <span class="cmd">sudo tcpdump -i any -nn 'tcp port 3000'
+sudo tcpdump -i any -nn 'tcp[tcpflags] &amp; tcp-syn != 0'
+
+sudo tshark -i any -f 'tcp port 3000' \
+  -Y 'tcp.flags.syn == 1 &amp;&amp; tcp.flags.ack == 0'</span>
+          <p class="warn"><b>权限：</b>抓包通常需要 root/管理员权限；生产环境先确认合规要求，避免抓到敏感数据。</p>
+        </article>
+
+        <article class="term">
+          <h4>Wireshark 显示过滤器速查<span class="en">Display Filters</span></h4>
+          <span class="cmd">tcp.port == 443
+tcp.flags.syn == 1 &amp;&amp; tcp.flags.ack == 0   # 只看 SYN
+tcp.flags.fin == 1                             # 只看 FIN
+tcp.analysis.retransmission                    # 重传
+tcp.analysis.duplicate_ack                     # 重复 ACK
+tcp.analysis.zero_window                       # 零窗口
+tcp.stream eq 0                                # 第 0 条 TCP 流</span>
+          <p><b>读法：</b>先找到三次握手的三个包，确认 seq/ack 基线；再顺着 TCP stream 看数据与关闭。遇到重传，对照前后序号判断丢的是哪一段。</p>
+        </article>
+
+        <article class="term" style="grid-column:1/-1">
+          <h4>线上症状速查表</h4>
+          <table>
+            <thead><tr><th>现象</th><th>更可能的原因</th><th>优先动作</th></tr></thead>
+            <tbody>
+              <tr><td>大量 <code>SYN_SENT</code></td><td>目标不可达、防火墙丢 SYN、端口未监听、路由问题</td><td>从客户端确认目标 IP/端口；在服务端抓包看 SYN 是否到达</td></tr>
+              <tr><td>大量 <code>SYN_RCVD</code></td><td>SYN flood、backlog 太小、客户端不回最后 ACK</td><td>看来源分布；检查 <code>somaxconn</code>、<code>tcp_max_syn_backlog</code>、SYN cookies</td></tr>
+              <tr><td>大量 <code>CLOSE_WAIT</code></td><td>应用没有 close()、连接池泄漏、异常分支未释放</td><td>查代码与连接池；在 finally 中关闭；不要先怪网络</td></tr>
+              <tr><td>大量 <code>TIME_WAIT</code></td><td>短连接多、本机是主动关闭方、端口复用不足</td><td>复用连接/连接池；检查业务是否频繁新建连接</td></tr>
+              <tr><td>出现 <code>RST</code></td><td>端口未监听、应用崩溃、LB/防火墙超时、半开连接收到数据</td><td>看 RST 方向与前序报文；核对各层空闲超时</td></tr>
+              <tr><td>零窗口</td><td>接收方应用读取太慢，缓冲区满</td><td>查消费逻辑、线程阻塞、下游处理速度</td></tr>
+              <tr><td>重传多</td><td>链路丢包、拥塞、无线质量差、MTU 问题</td><td>分段抓包定位方向；看 RTT、丢包率与 PMTUD</td></tr>
+              <tr><td>约 40/200 毫秒的固定延迟</td><td>Nagle 与延迟确认叠加</td><td>低延迟场景设置 <code>TCP_NODELAY</code>；合并小写入</td></tr>
+              <tr><td>连接建立慢</td><td>DNS、TCP、TLS、HTTP 某一段慢</td><td>用浏览器 Timing/Performance 或 <code>curl -w</code> 拆分阶段</td></tr>
+            </tbody>
+          </table>
+        </article>
+
+        <article class="term">
+          <h4>用 Node.js 实际观察握手与关闭<span class="en">Node.js net Module</span></h4>
+          <span class="cmd">const net = require('node:net');
+
+const server = net.createServer((socket) => {
+  socket.setNoDelay(true);          // 关闭 Nagle
+  socket.setKeepAlive(true, 30000); // 空闲 30 秒后探测
+  socket.on('data', (chunk) => {
+    // chunk 不保证是一条完整消息
+    socket.write('echo:' + chunk);
+  });
+  socket.on('end', () => console.log('收到对方 FIN'));
+  socket.on('error', (err) => console.error(err));
+});
+
+server.listen(3000, () => console.log('LISTEN 3000'));
+// server.close() 只停止监听，不会立刻断开已有连接</span>
+          <span class="cmd">const socket = net.connect(3000, '127.0.0.1', () => {
+  socket.write('hello');
+});
+socket.on('close', () => console.log('连接关闭'));
+// socket.end()    → 发送 FIN，正常半关闭
+// socket.destroy() → 可能发送 RST，立即丢弃</span>
+          <p><b>观察方法：</b>运行服务端后，用 <code>Get-NetTCPConnection -LocalPort 3000</code>（Windows）或 <code>ss -tan</code>（Linux）看状态；再配合抓包看 SYN、FIN 的方向。</p>
+        </article>
+
+        <article class="term">
+          <h4>sysctl 参数与调优边界<span class="en">Linux TCP Tunables</span></h4>
+          <p><b>常见参数：</b><code>net.core.somaxconn</code>（accept 队列上限）、<code>net.ipv4.tcp_max_syn_backlog</code>（SYN 队列）、<code>net.ipv4.tcp_syncookies</code>（SYN cookies）、<code>net.ipv4.tcp_fin_timeout</code>（FIN_WAIT_2 超时）、<code>net.ipv4.tcp_keepalive_time</code>（keepalive 空闲时间）、<code>net.ipv4.ip_local_port_range</code>（临时端口范围）。</p>
+          <p class="warn"><b>不要照抄网上的「优化参数」：</b>尤其不要启用 <code>tcp_tw_recycle</code>（已移除，NAT 下有害）；<code>tcp_tw_reuse</code> 只适用于出站连接。先定位问题，再改参数，并记录基线。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="gloss-sec" id="g-quiz">
+      <h2>8. 自测与掌握标准</h2>
+      <p class="sec-note">能用自己的话回答下面的问题，并能对照抓包指出对应字段，才算真正掌握。</p>
+      <details class="qa"><summary>1. 为什么客户端 SYN 的 seq=100，服务端回的 ack 是 101，而不是 100 或 102？</summary><p>seq=100 表示客户端的起始序号；SYN 本身占用 1 个序号，所以客户端下一个期望发送的字节是 101。ack 的含义是「下一个期望收到的字节」，因此是 101。100 表示还没收到 SYN 占用的那个号；102 则跳过了 101。</p></details>
+      <details class="qa"><summary>2. 为什么第三条 ACK 发出后客户端立刻 ESTABLISHED，而服务端要等收到它才 ESTABLISHED？</summary><p>客户端发出 ACK 时，已经确认了服务端的 SYN（ack=y+1），它这一侧的信息完整，所以进入 ESTABLISHED。服务端还没收到这条 ACK，不知道客户端是否收到了自己的 SYN，必须等 ACK 到达才能确认双向就绪。</p></details>
+      <details class="qa"><summary>3. 为什么挥手通常四次，什么情况下三次？</summary><p>两个方向的关闭独立：主动方 FIN、被动方 ACK、被动方 FIN、主动方 ACK。若被动方收到 FIN 时没有剩余数据，ACK 与 FIN 可以合并成一条 FIN+ACK，于是只看到三条报文。</p></details>
+      <details class="qa"><summary>4. TIME_WAIT 的两个作用是什么？为什么必须在主动关闭方？</summary><p>① 最后一个 ACK 可能丢失，留在 TIME_WAIT 才能重发；② 让该四元组的旧报文在网络中过期，避免新连接收到残留数据。主动关闭方是最后发送 ACK 的一方，只有它能承担重发和等待旧报文过期的职责。</p></details>
+      <details class="qa"><summary>5. CLOSE_WAIT 堆积是谁的问题？</summary><p>几乎总是应用层问题：对端已经发 FIN，本机内核回了 ACK，但应用没有调用 close()。常见原因是连接池泄漏、异常分支未释放、阻塞读写。网络层通常没有问题。</p></details>
+      <details class="qa"><summary>6. 纯 ACK 消耗序号吗？它的 seq 字段填什么？</summary><p>不消耗。纯 ACK 的 seq 字段仍然填写发送方当前的 SND.NXT，但发送后 SND.NXT 不前进；接收方也不会因为纯 ACK 推进 RCV.NXT。</p></details>
+      <details class="qa"><summary>7. 收到乱序报文时，ack 会跳过缺口吗？</summary><p>不会。累计确认只确认连续前缀；缺口之前的字节即使收到了更高序号，ack 仍停在缺口位置。SACK 可以额外报告已收到的离散块，但不改变 ack 字段的语义。</p></details>
+      <details class="qa"><summary>8. HTTP/2 解决了什么队头阻塞，没解决什么？</summary><p>解决了 HTTP/1.1 的应用层队头阻塞：多个请求可以交错复用一条连接。没有解决 TCP 层队头阻塞：一个 TCP 段丢失，所有 stream 都要等重传。HTTP/3/QUIC 用独立 stream 解决了后者。</p></details>
+      <details class="qa"><summary>9. MSS 和 MTU 的区别？</summary><p>MTU 是链路层一次能承载的最大 IP 包大小（以太网常见 1500）；MSS 是 TCP 载荷的最大长度，通常等于 MTU 减去 IP 头和 TCP 头（常见 1460）。MSS 在 SYN 选项中协商。</p></details>
+      <details class="qa"><summary>10. 抓包里看到 RST，如何判断原因？</summary><p>先看 RST 的方向和它前面的报文：如果服务端在收到数据后回 RST，可能是连接已不存在或端口未监听；如果中间设备超时后回 RST，两侧空闲时间可能不一致；如果应用 close 时设置了 SO_LINGER=0，也会立即发 RST。不要只凭 RST 判断链路故障。</p></details>
+      <details class="qa"><summary>11. socket.end() 和 socket.destroy() 有什么区别？</summary><p><code>end()</code> 发送 FIN，进入正常的半关闭/四次挥手流程；<code>destroy()</code> 立即销毁套接字，可能发送 RST，未发送的数据可能丢失。</p></details>
+      <details class="qa"><summary>12. 为什么 TCP 需要应用层自己处理粘包？</summary><p>TCP 只提供字节流，不保留 write() 的边界。一次写入可能被拆分，多次写入可能合并。应用必须用长度前缀、分隔符或自描述格式来划分消息；这不是 TCP 的缺陷，而是它的设计目标。</p></details>
+
+      <div class="card" style="margin-top:14px">
+        <h2>掌握标准</h2>
+        <ul class="points">
+          <li>能不看资料画出三次握手和四次挥手，并写出每一步的 seq/ack 与状态。</li>
+          <li>能解释每个状态属于哪一方、因为什么进入、因为什么离开。</li>
+          <li>能在 Wireshark 里找到一条 TCP 流，读出 Flags、Seq、Ack、Window，并定位重传或 RST。</li>
+          <li>能根据 SYN_SENT、SYN_RCVD、CLOSE_WAIT、TIME_WAIT 的堆积判断问题方向。</li>
+          <li>能写出正确关闭连接的代码，并为自己的协议设计消息边界。</li>
+          <li>能说清楚 HTTP/1.1、HTTP/2、HTTP/3 各自解决了什么、没解决什么。</li>
+        </ul>
+      </div>
+    </section>
+  </section>
+
+  <footer>
+    演示依据：RFC 9293（TCP）、RFC 5681（拥塞控制）、RFC 6298（RTO）、RFC 2018（SACK）、RFC 7323（窗口缩放与时间戳）、RFC 8446（TLS 1.3）、RFC 9000（QUIC）。页面只展示 TCP 状态机主线，没有展开拥塞控制、同时打开、同时关闭的完整分支，也没有模拟丢包后的拥塞退避。TIME_WAIT 时长以 Linux 实现为准（约 60 秒）。
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var wait = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var CIRCLES = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
+  var KIND = {
+    CLOSED: 'closed', LISTEN: 'closed',
+    SYN_SENT: 'opening', SYN_RCVD: 'opening',
+    ESTABLISHED: 'open',
+    FIN_WAIT_1: 'closing', FIN_WAIT_2: 'closing', CLOSE_WAIT: 'closing',
+    LAST_ACK: 'closing', CLOSING: 'closing',
+    TIME_WAIT: 'wait'
+  };
+
+  var speedSel = $('#speed');
+  function DUR() {
+    return reduced.matches ? 120 : Number(speedSel.value || 900);
+  }
+  function applySpeed() {
+    document.documentElement.style.setProperty('--dur', DUR() + 'ms');
+  }
+  function HOLD() {
+    return reduced.matches ? 450 : Math.max(800, Math.round(DUR() * 1.5));
+  }
+
+  /* ====================== 主实验 ====================== */
+  var S = null;
+  var autoOn = false;
+  var history = [];
+
+  function initState() {
+    return {
+      client: { state: 'CLOSED', snd: 100, rcv: null },
+      server: { state: 'LISTEN', snd: 300, rcv: null },
+      step: 0,
+      log: [],
+      busy: false
+    };
+  }
+
+  function say(title, text) {
+    $('#say-title').textContent = title;
+    $('#say-text').textContent = text;
+  }
+
+  function setBadge(el, st) {
+    el.textContent = st;
+    el.setAttribute('data-kind', KIND[st] || 'closed');
+  }
+
+  function render() {
+    setBadge($('#state-client'), S.client.state);
+    setBadge($('#state-server'), S.server.state);
+    $('#snd-client').textContent = S.client.snd;
+    $('#rcv-client').textContent = S.client.rcv == null ? '—' : S.client.rcv;
+    $('#snd-server').textContent = S.server.snd;
+    $('#rcv-server').textContent = S.server.rcv == null ? '—' : S.server.rcv;
+
+    var btn = $('#next');
+    if (S.step >= STEPS.length) {
+      btn.disabled = true;
+      btn.textContent = '演示结束';
+    } else {
+      btn.disabled = S.busy;
+      btn.textContent = CIRCLES[S.step] + ' ' + STEPS[S.step].label;
+    }
+    $('#reset').disabled = S.busy;
+    $('#auto').disabled = S.busy && !autoOn;
+    $('#loss-chk').disabled = S.busy || S.step !== 8;
+    $('#retry').disabled = S.busy || autoOn || S.step === 0;
+    $('#back').disabled = S.busy || autoOn || S.step === 0;
+
+    $$('#state-table tbody tr').forEach(function (tr) {
+      var st = tr.getAttribute('data-state');
+      var who = [];
+      if (S.client.state === st) who.push('客户端');
+      if (S.server.state === st) who.push('服务端');
+      tr.classList.toggle('on', who.length > 0);
+      tr.querySelector('.live').textContent = who.join(' + ');
+    });
+    renderHistory();
+  }
+
+  function setState(side, st) {
+    S[side].state = st;
+    render();
+    var host = $(side === 'client' ? '#host-client' : '#host-server');
+    host.classList.remove('pulse');
+    void host.offsetWidth;
+    host.classList.add('pulse');
+  }
+
+  function addLog(o) {
+    S.log.push(o);
+    renderLog();
+  }
+
+  function renderLog() {
+    var body = $('#log-body');
+    if (!S.log.length) {
+      body.innerHTML = '<tr><td colspan="7" class="empty">还没有报文，点「下一步」开始。</td></tr>';
+      return;
+    }
+    body.innerHTML = S.log.map(function (r, i) {
+      return '<tr>' +
+        '<td>' + (i + 1) + '</td>' +
+        '<td>' + r.dir + '</td>' +
+        '<td><code>' + r.flags + '</code></td>' +
+        '<td>' + (r.seq == null ? '—' : r.seq) + '</td>' +
+        '<td>' + (r.ack == null ? '—' : r.ack) + '</td>' +
+        '<td>' + (r.len == null ? '—' : r.len) + '</td>' +
+        '<td class="note">' + (r.note || '') + '</td>' +
+        '</tr>';
+    }).join('');
+    var w = $('#log-wrap');
+    w.scrollTop = w.scrollHeight;
+  }
+
+  function snapshot() {
+    return {
+      client: { state: S.client.state, snd: S.client.snd, rcv: S.client.rcv },
+      server: { state: S.server.state, snd: S.server.snd, rcv: S.server.rcv },
+      log: S.log.map(function (r) {
+        return { dir: r.dir, flags: r.flags, seq: r.seq, ack: r.ack, len: r.len, note: r.note };
+      }),
+      step: S.step,
+      sayTitle: $('#say-title').textContent,
+      sayText: $('#say-text').textContent,
+      twVisible: !$('#tw-wrap').hidden,
+      twWidth: $('#tw-bar').style.width
+    };
+  }
+
+  function restore(snap) {
+    if (!snap) return;
+    autoOn = false;
+    $('#auto').textContent = '自动播放';
+    S.client = { state: snap.client.state, snd: snap.client.snd, rcv: snap.client.rcv };
+    S.server = { state: snap.server.state, snd: snap.server.snd, rcv: snap.server.rcv };
+    S.log = snap.log.map(function (r) {
+      return { dir: r.dir, flags: r.flags, seq: r.seq, ack: r.ack, len: r.len, note: r.note };
+    });
+    S.step = snap.step;
+    S.busy = false;
+    $('#say-title').textContent = snap.sayTitle;
+    $('#say-text').textContent = snap.sayText;
+    $('#tw-wrap').hidden = !snap.twVisible;
+    $('#tw-bar').style.width = snap.twWidth;
+    $$('.packet', $('#main-link')).forEach(function (p) { p.remove(); });
+    renderLog();
+    render();
+  }
+
+  function renderHistory() {
+    var box = $('#history');
+    if (!box) return;
+    var html = '<span class="hlabel">跳转</span>';
+    for (var i = 0; i < history.length; i++) {
+      var label = i === 0 ? '起点' : CIRCLES[i - 1];
+      var title = i === 0 ? '初始状态' : (STEPS[i - 1] ? STEPS[i - 1].label : '');
+      html += '<button class="hchip" type="button" data-go="' + i + '" title="' + title + '"' +
+        (i === S.step ? ' aria-current="step"' : '') +
+        (S.busy || autoOn ? ' disabled' : '') + '>' + label + '</button>';
+    }
+    box.innerHTML = html;
+  }
+
+  function goBackTo(step) {
+    if (S.busy || autoOn) return;
+    if (step < 0 || step >= history.length || step === S.step) return;
+    restore(history[step]);
+  }
+
+  function retryStep() {
+    if (S.busy || autoOn || S.step === 0) return Promise.resolve();
+    restore(history[S.step - 1]);
+    return nextStep();
+  }
+
+  function send(link, from, opts) {
+    return new Promise(function (resolve) {
+      var toRight = from === 'client';
+      var el = document.createElement('div');
+      el.className = 'packet ' + (toRight ? 'right' : 'left') + (opts.cls ? ' ' + opts.cls : '');
+      el.style.top = toRight ? '30%' : '56%';
+
+      var nums = [];
+      if (opts.seq != null) nums.push('seq ' + opts.seq);
+      if (opts.len) nums.push('len ' + opts.len);
+      if (opts.ack != null) nums.push('ack ' + opts.ack);
+
+      el.innerHTML = '<span class="flags">' + opts.flags + '</span>' +
+        (nums.length ? '<span class="nums">' + nums.join('<br>') + '</span>' : '');
+
+      link.appendChild(el);
+      void el.offsetWidth;
+      requestAnimationFrame(function () { el.classList.add('go'); });
+
+      var d = DUR();
+      if (opts.lost) {
+        setTimeout(function () { el.classList.add('lost'); }, Math.round(d * 0.45));
+        setTimeout(function () {
+          if (el.parentNode) el.parentNode.removeChild(el);
+          resolve();
+        }, d + 60);
+        return;
+      }
+
+      var hold = opts.hold != null ? opts.hold : HOLD();
+      setTimeout(function () {
+        el.classList.add('landed');
+        el.style.opacity = '0';
+        resolve();
+        setTimeout(function () {
+          if (el.parentNode) el.parentNode.removeChild(el);
+        }, reduced.matches ? 0 : 280);
+      }, d + hold);
+    });
+  }
+
+  var STEPS = [
+    {
+      label: '客户端发送 SYN',
+      run: function () {
+        say('① 客户端 → 服务端：SYN',
+          '客户端从 CLOSED 进入 SYN_SENT，发出 SYN(seq=100)。100 是客户端随机选的初始序号（ISN），告诉服务端「我的字节从 100 开始编号」。SYN 占用一个序号，所以客户端的下一个发送序号变成 101。服务端收到后从 LISTEN 进入 SYN_RCVD，记下下一个期望收到的序号是 101。');
+        setState('client', 'SYN_SENT');
+        S.client.snd = 101;
+        render();
+        addLog({ dir: '客户端 → 服务端', flags: 'SYN', seq: 100, ack: null, len: null, note: 'SYN 占用 1 个序号' });
+        return send($('#main-link'), 'client', { flags: 'SYN', seq: 100, cls: 'syn' }).then(function () {
+          S.server.rcv = 101;
+          setState('server', 'SYN_RCVD');
+        });
+      }
+    },
+    {
+      label: '服务端回 SYN + ACK',
+      run: function () {
+        say('② 服务端 → 客户端：SYN + ACK',
+          '服务端发出自己的 ISN=300（seq），同时确认客户端刚才的 SYN（ack=101）。一条报文做了两件事：报自己的起始序号、确认对方的起始序号。客户端收到后从 SYN_SENT 进入 ESTABLISHED。注意服务端仍停在 SYN_RCVD：它还不知道客户端有没有收到自己的 SYN。');
+        S.server.snd = 301;
+        render();
+        addLog({ dir: '服务端 → 客户端', flags: 'SYN · ACK', seq: 300, ack: 101, len: null, note: '一条报文完成两件事' });
+        return send($('#main-link'), 'server', { flags: 'SYN · ACK', seq: 300, ack: 101, cls: 'syn' }).then(function () {
+          S.client.rcv = 301;
+          setState('client', 'ESTABLISHED');
+        });
+      }
+    },
+    {
+      label: '客户端回 ACK',
+      run: function () {
+        say('③ 客户端 → 服务端：ACK',
+          '客户端确认服务端的 SYN（ack=301）。服务端收到后从 SYN_RCVD 进入 ESTABLISHED。到这里，双方都完成了「报出自己的起始序号」和「确认对方的起始序号」，这就是三次握手的全部任务，只用 1 个 RTT。握手完成不代表业务代码已经处理了你的请求，HTTP 请求还要再发一轮。');
+        addLog({ dir: '客户端 → 服务端', flags: 'ACK', seq: null, ack: 301, len: null, note: '第三次 ACK 可以携带数据' });
+        return send($('#main-link'), 'client', { flags: 'ACK', ack: 301, cls: 'ack' }).then(function () {
+          setState('server', 'ESTABLISHED');
+        });
+      }
+    },
+    {
+      label: '服务端发送数据（200 字节）',
+      run: function () {
+        say('④ 服务端发送数据，客户端确认',
+          '服务端发送 200 字节，seq=301 表示这批数据的第一个字节编号。客户端收到后把 rcv.nxt 记为 501，回 ACK(ack=501)：累计确认的含义是「501 之前的字节我全收到了」。数据、SYN、FIN 都消耗序号，ACK 不消耗。');
+        S.server.snd = 501;
+        render();
+        addLog({ dir: '服务端 → 客户端', flags: 'DATA', seq: 301, ack: null, len: 200, note: '数据消耗序号' });
+        return send($('#main-link'), 'server', { flags: 'DATA', seq: 301, len: 200, cls: 'data' }).then(function () {
+          S.client.rcv = 501;
+          render();
+          addLog({ dir: '客户端 → 服务端', flags: 'ACK', seq: null, ack: 501, len: null, note: '累计确认' });
+          return send($('#main-link'), 'client', { flags: 'ACK', ack: 501, cls: 'ack' });
+        });
+      }
+    },
+    {
+      label: '客户端发送 FIN',
+      run: function () {
+        say('⑤ 客户端关闭发送方向：FIN',
+          '客户端调用 close()，发出 FIN(seq=101, ack=501)。FIN 的含义是「我不再发送数据了」，接收方向仍然可用。FIN 同样占 1 个序号。客户端进入 FIN_WAIT_1；服务端从 ESTABLISHED 进入 CLOSE_WAIT。');
+        S.client.snd = 102;
+        setState('client', 'FIN_WAIT_1');
+        addLog({ dir: '客户端 → 服务端', flags: 'FIN · ACK', seq: 101, ack: 501, len: null, note: '只关闭发送方向' });
+        return send($('#main-link'), 'client', { flags: 'FIN · ACK', seq: 101, ack: 501, cls: 'fin' }).then(function () {
+          S.server.rcv = 102;
+          setState('server', 'CLOSE_WAIT');
+        });
+      }
+    },
+    {
+      label: '服务端确认 FIN',
+      run: function () {
+        say('⑥ 服务端 → 客户端：ACK',
+          '服务端回 ACK(ack=102)：「你的 FIN 我收到了。」客户端 FIN_WAIT_1 → FIN_WAIT_2。服务端停在 CLOSE_WAIT，等本机应用处理完再调用 close()。线上看到大量 CLOSE_WAIT，通常是应用没有正确关闭连接，而不是网络问题。');
+        addLog({ dir: '服务端 → 客户端', flags: 'ACK', seq: null, ack: 102, len: null, note: '只确认，不代表服务端也关了' });
+        return send($('#main-link'), 'server', { flags: 'ACK', ack: 102, cls: 'ack' }).then(function () {
+          setState('client', 'FIN_WAIT_2');
+        });
+      }
+    },
+    {
+      label: '服务端继续发送剩余数据（50 字节）',
+      run: function () {
+        say('⑦ 半关闭：服务端仍然可以发数据',
+          '客户端方向已经关闭，服务端方向没有。服务端在 CLOSE_WAIT 里继续发送剩余 50 字节（seq=501），客户端照常接收并回 ACK(ack=551)。这就是挥手需要四次的核心原因：两个方向的关闭互相独立。');
+        S.server.snd = 551;
+        render();
+        addLog({ dir: '服务端 → 客户端', flags: 'DATA', seq: 501, ack: null, len: 50, note: '半关闭：客户端仍能接收' });
+        return send($('#main-link'), 'server', { flags: 'DATA', seq: 501, len: 50, cls: 'data' }).then(function () {
+          S.client.rcv = 551;
+          render();
+          addLog({ dir: '客户端 → 服务端', flags: 'ACK', seq: null, ack: 551, len: null, note: '' });
+          return send($('#main-link'), 'client', { flags: 'ACK', ack: 551, cls: 'ack' });
+        });
+      }
+    },
+    {
+      label: '服务端发送 FIN',
+      run: function () {
+        say('⑧ 服务端关闭发送方向：FIN',
+          '服务端应用处理完并调用 close()，发出 FIN(seq=551, ack=102)。服务端 CLOSE_WAIT → LAST_ACK。客户端收到后，准备回最后一个 ACK。');
+        S.server.snd = 552;
+        setState('server', 'LAST_ACK');
+        addLog({ dir: '服务端 → 客户端', flags: 'FIN · ACK', seq: 551, ack: 102, len: null, note: '被动方现在也关闭发送方向' });
+        return send($('#main-link'), 'server', { flags: 'FIN · ACK', seq: 551, ack: 102, cls: 'fin' }).then(function () {
+          S.client.rcv = 552;
+          render();
+        });
+      }
+    },
+    {
+      label: '客户端发送最后一个 ACK',
+      run: function () {
+        var lost = $('#loss-chk').checked;
+        if (!lost) {
+          say('⑨ 客户端 → 服务端：最后一个 ACK',
+            '客户端回 ACK(ack=552)，然后进入 TIME_WAIT；服务端收到后 LAST_ACK → CLOSED。至此四次挥手完成：客户端 FIN + 服务端 ACK 是一组，服务端 FIN + 客户端 ACK 是另一组。如果被动方收到 FIN 时没有数据要发，ACK 与 FIN 可以合并，抓包里就只看到三次。');
+          addLog({ dir: '客户端 → 服务端', flags: 'ACK', seq: null, ack: 552, len: null, note: '完成后进入 TIME_WAIT' });
+          return send($('#main-link'), 'client', { flags: 'ACK', ack: 552, cls: 'ack' }).then(function () {
+            setState('client', 'TIME_WAIT');
+            setState('server', 'CLOSED');
+          });
+        }
+
+        say('⑨ 最后一个 ACK 丢失',
+          '客户端已经发出 ACK 并进入 TIME_WAIT，但这条 ACK 在网络中丢失。服务端还停在 LAST_ACK；它不知道对方收到没有，重传定时器到期后会重发 FIN。');
+        addLog({ dir: '客户端 → 服务端', flags: 'ACK', seq: null, ack: 552, len: null, note: '丢失' });
+        return send($('#main-link'), 'client', { flags: 'ACK', ack: 552, cls: 'ack', lost: true }).then(function () {
+          setState('client', 'TIME_WAIT');
+          return wait(850);
+        }).then(function () {
+          say('⑨ 服务端重传 FIN',
+            '服务端没有收到 ACK，重发 FIN。客户端虽然已经进入 TIME_WAIT，但连接记录还在，仍然能接收并重发 ACK。');
+          addLog({ dir: '服务端 → 客户端', flags: 'FIN · ACK', seq: 551, ack: 102, len: null, note: '重传' });
+          return send($('#main-link'), 'server', { flags: 'FIN · ACK', seq: 551, ack: 102, cls: 'fin retx' });
+        }).then(function () {
+          return wait(250);
+        }).then(function () {
+          addLog({ dir: '客户端 → 服务端', flags: 'ACK', seq: null, ack: 552, len: null, note: '重传 ACK' });
+          return send($('#main-link'), 'client', { flags: 'ACK', ack: 552, cls: 'ack' });
+        }).then(function () {
+          setState('server', 'CLOSED');
+          say('⑨ 重传后关闭完成',
+            '如果客户端已经彻底关闭（连接记录被删除），收到这个 FIN 只能回 RST，服务端会被异常终止。TIME_WAIT 留在原地，就是为了还能把 ACK 重发一次。另外，收到重传的 FIN 会让 2MSL 计时重新开始。');
+        });
+      }
+    },
+    {
+      label: '等待 2MSL 后关闭',
+      run: function () {
+        say('⑩ TIME_WAIT：等待 2MSL',
+          '主动关闭方不能立刻删除连接记录。原因一：最后一个 ACK 可能丢失，留在 TIME_WAIT 才能重发。原因二：让这条四元组的旧报文在网络里过期，避免马上复用的新连接收到上一连接的残留数据。Linux 把这个状态固定为约 60 秒。下面是加速演示。');
+        var wrap = $('#tw-wrap');
+        wrap.hidden = false;
+        var bar = $('#tw-bar');
+        bar.style.width = '0%';
+        var total = reduced.matches ? 600 : 6000;
+        var start = performance.now();
+
+        return new Promise(function (resolve) {
+          function tick(now) {
+            var p = Math.min(1, (now - start) / total);
+            bar.style.width = (p * 100).toFixed(1) + '%';
+            if (p < 1) requestAnimationFrame(tick); else resolve();
+          }
+          requestAnimationFrame(tick);
+        }).then(function () {
+          setState('client', 'CLOSED');
+          say('⑩ 连接彻底关闭',
+            '两端都回到 CLOSED，连接的状态记录被删除，这条连接结束。十步里没有一步是「切断一条线」——关闭的是两端各自保存的状态。');
+        });
+      }
+    }
+  ];
+
+  function nextStep() {
+    if (S.busy || S.step >= STEPS.length) return Promise.resolve();
+    S.busy = true;
+    render();
+    return Promise.resolve()
+      .then(function () { return STEPS[S.step].run(); })
+      .catch(function (err) { console.error(err); })
+      .then(function () {
+        S.step += 1;
+        history.length = S.step;
+        history[S.step] = snapshot();
+        S.busy = false;
+        render();
+      });
+  }
+
+  function autoPlay() {
+    if (autoOn) {
+      autoOn = false;
+      $('#auto').textContent = '自动播放';
+      render();
+      return;
+    }
+    if (S.busy || S.step >= STEPS.length) return;
+    autoOn = true;
+    $('#auto').textContent = '停止';
+    render();
+    (function loop() {
+      if (!autoOn || S.step >= STEPS.length) {
+        autoOn = false;
+        $('#auto').textContent = '自动播放';
+        render();
+        return;
+      }
+      nextStep().then(function () {
+        if (!autoOn) return;
+        wait(420).then(loop);
+      });
+    })();
+  }
+
+  function resetMain() {
+    autoOn = false;
+    S = initState();
+    $('#auto').textContent = '自动播放';
+    $('#loss-chk').checked = false;
+    $('#tw-wrap').hidden = true;
+    $('#tw-bar').style.width = '0%';
+    renderLog();
+    say('准备开始', '服务端已经在 LISTEN，客户端还是 CLOSED。点「下一步」让客户端发起连接。');
+    history = [snapshot()];
+    render();
+  }
+
+  /* ====================== 实验一：迟到的旧 SYN ====================== */
+  var miniBusy = false;
+
+  function setMiniState(sel, st) {
+    var el = $(sel);
+    el.textContent = st;
+    el.setAttribute('data-kind', KIND[st] || 'closed');
+  }
+
+  function syncMiniButtons() {
+    $('#play-old').disabled = miniBusy;
+    $('#reset-old').disabled = miniBusy;
+    $('#play-close').disabled = miniBusy;
+    $('#reset-close').disabled = miniBusy;
+  }
+
+  function resetOldSyn(clearVerdict) {
+    setMiniState('#mini-client-state', 'CLOSED');
+    setMiniState('#mini-server-state', 'LISTEN');
+    $('#mini-server-note').textContent = '等待 SYN';
+    if (clearVerdict) {
+      var v = $('#old-verdict');
+      v.className = 'verdict';
+      v.textContent = '尚未播放。';
+    }
+    var link = $('#mini-link');
+    $$('.packet', link).forEach(function (p) { p.remove(); });
+  }
+
+  function playOldSyn() {
+    if (miniBusy) return;
+    miniBusy = true;
+    syncMiniButtons();
+    resetOldSyn(false);
+
+    var mode = document.querySelector('input[name="handshake-mode"]:checked').value;
+    var link = $('#mini-link');
+    var verdict = $('#old-verdict');
+    verdict.className = 'verdict';
+    verdict.textContent = '播放中…';
+
+    setMiniState('#mini-server-state', 'SYN_RCVD');
+    $('#mini-server-note').textContent = '收到一条旧的 SYN';
+
+    send(link, 'client', { flags: 'SYN（旧）', seq: 100, cls: 'stale' })
+      .then(function () {
+        if (mode === '2') {
+          setMiniState('#mini-server-state', 'ESTABLISHED');
+          $('#mini-server-note').textContent = '服务端单方面认为已建立';
+        }
+        return send(link, 'server', { flags: 'SYN · ACK', seq: 300, ack: 101 });
+      })
+      .then(function () {
+        return send(link, 'client', { flags: 'RST', cls: 'rst' });
+      })
+      .then(function () {
+        if (mode === '3') {
+          setMiniState('#mini-server-state', 'LISTEN');
+          $('#mini-server-note').textContent = 'RST 到达，删除半开连接';
+          verdict.className = 'verdict ok';
+          verdict.textContent = '三次握手：服务端一直停在 SYN_RCVD，收到 RST 后删除半开连接、回到 LISTEN。这条旧 SYN 没有建立出任何连接。';
+        } else {
+          setMiniState('#mini-server-state', 'CLOSED');
+          $('#mini-server-note').textContent = '收到 RST，连接才被释放';
+          verdict.className = 'verdict bad';
+          verdict.textContent = '两次握手：服务端在发出 SYN+ACK 后就把自己当作 ESTABLISHED，可这次建连客户端根本没有参与。这次还能靠 RST 及时释放；如果客户端已不在线、或 RST 在途中丢失，这条幽灵连接会在服务端一直挂到超时，期间占用资源。而且服务端从未收到对自身 ISN 的确认。';
+        }
+        miniBusy = false;
+        syncMiniButtons();
+      });
+  }
+
+  /* ====================== 实验二：挥手能不能合并 ====================== */
+  function resetClose() {
+    setMiniState('#close-a-state', 'ESTABLISHED');
+    setMiniState('#close-b-state', 'ESTABLISHED');
+    var v = $('#close-verdict');
+    v.className = 'verdict';
+    v.textContent = '尚未播放。';
+    var link = $('#close-link');
+    $$('.packet', link).forEach(function (p) { p.remove(); });
+  }
+
+  function playClose() {
+    if (miniBusy) return;
+    miniBusy = true;
+    syncMiniButtons();
+    resetClose();
+
+    var merged = $('#merge-chk').checked;
+    var link = $('#close-link');
+    var verdict = $('#close-verdict');
+
+    setMiniState('#close-a-state', 'FIN_WAIT_1');
+    send(link, 'client', { flags: 'FIN', seq: 101, cls: 'fin' })
+      .then(function () {
+        setMiniState('#close-b-state', 'CLOSE_WAIT');
+        if (merged) {
+          setMiniState('#close-b-state', 'LAST_ACK');
+          return send(link, 'server', { flags: 'FIN · ACK', seq: 300, ack: 102, cls: 'fin' });
+        }
+        return send(link, 'server', { flags: 'ACK', seq: null, ack: 102, cls: 'ack' })
+          .then(function () {
+            setMiniState('#close-a-state', 'FIN_WAIT_2');
+            return send(link, 'server', { flags: 'DATA', seq: 300, len: 50, cls: 'data' });
+          })
+          .then(function () {
+            return send(link, 'client', { flags: 'ACK', seq: null, ack: 350, cls: 'ack' });
+          })
+          .then(function () {
+            setMiniState('#close-b-state', 'LAST_ACK');
+            return send(link, 'server', { flags: 'FIN', seq: 350, ack: 102, cls: 'fin' });
+          });
+      })
+      .then(function () {
+        var ackNum = merged ? 301 : 351;
+        return send(link, 'client', { flags: 'ACK', seq: null, ack: ackNum, cls: 'ack' }).then(function () {
+          setMiniState('#close-a-state', 'TIME_WAIT');
+          setMiniState('#close-b-state', 'CLOSED');
+        });
+      })
+      .then(function () {
+        if (merged) {
+          verdict.className = 'verdict ok';
+          verdict.textContent = '三次：被动方没有剩余数据要发，ACK 和 FIN 合并成一条 FIN·ACK 发回，所以只看到三条报文。';
+        } else {
+          verdict.className = 'verdict';
+          verdict.textContent = '四次：被动方还有 50 字节要发，先单独回 ACK，数据发完后再发 FIN，所以 ACK 和 FIN 拆成了两条。';
+        }
+        miniBusy = false;
+        syncMiniButtons();
+      });
+  }
+
+  /* ====================== 术语全书搜索 ====================== */
+  var glossQ = $('#gloss-q');
+
+  function syncGlossCount() {
+    var all = $$('.term');
+    var shown = all.filter(function (t) { return !t.hidden; }).length;
+    var el = $('#gloss-count');
+    if (!el) return;
+    el.textContent = glossQ && glossQ.value.trim()
+      ? '匹配 ' + shown + ' / ' + all.length + ' 个词条'
+      : '共 ' + all.length + ' 个词条';
+  }
+
+  function filterGloss() {
+    var q = glossQ ? glossQ.value.trim().toLowerCase() : '';
+    $$('.term').forEach(function (t) {
+      t.hidden = !!q && t.textContent.toLowerCase().indexOf(q) === -1;
+    });
+    $$('.gloss-sec').forEach(function (sec) {
+      var any = $$('.term', sec).some(function (t) { return !t.hidden; });
+      sec.hidden = !any;
+    });
+    var empty = $('#gloss-empty');
+    if (empty) empty.hidden = $$('.term').some(function (t) { return !t.hidden; });
+    syncGlossCount();
+  }
+
+  if (glossQ) {
+    glossQ.addEventListener('input', filterGloss);
+    filterGloss();
+  }
+
+  /* ====================== 标签页 ====================== */
+  var tabs = $$('[role="tab"]');
+
+  function selectTab(id) {
+    tabs.forEach(function (t) {
+      var on = t.id === id;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    });
+  }
+
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { selectTab(t.id); });
+    t.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      var dir = e.key === 'ArrowRight' ? 1 : -1;
+      var next = tabs[(i + dir + tabs.length) % tabs.length];
+      selectTab(next.id);
+      next.focus();
+      e.preventDefault();
+    });
+  });
+
+  /* ====================== 事件绑定与初始化 ====================== */
+  $('#next').addEventListener('click', nextStep);
+  $('#auto').addEventListener('click', autoPlay);
+  $('#reset').addEventListener('click', resetMain);
+  $('#retry').addEventListener('click', function () { retryStep(); });
+  $('#back').addEventListener('click', function () { goBackTo(S.step - 1); });
+  $('#history').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.hchip') : null;
+    if (!b || b.disabled) return;
+    goBackTo(Number(b.getAttribute('data-go')));
+  });
+  speedSel.addEventListener('change', function () { applySpeed(); });
+  reduced.addEventListener('change', function () { applySpeed(); });
+
+  $('#play-old').addEventListener('click', playOldSyn);
+  $('#reset-old').addEventListener('click', function () { if (!miniBusy) resetOldSyn(true); });
+  $$('input[name="handshake-mode"]').forEach(function (r) {
+    r.addEventListener('change', function () { if (!miniBusy) resetOldSyn(true); });
+  });
+
+  $('#play-close').addEventListener('click', playClose);
+  $('#reset-close').addEventListener('click', function () { if (!miniBusy) resetClose(); });
+
+  applySpeed();
+  resetMain();
+  resetOldSyn(true);
+  resetClose();
+})();
+</script>
+</body>
+</html>
