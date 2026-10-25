@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JOIN 分步课件</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#243449; --line:#334155;
+    --text:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8;
+    --pass:#22c55e; --fail:#ef4444; --null:#a78bfa; --warn:#fbbf24;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px 20px 40px;font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+       background:var(--bg);color:var(--text);font-size:14px;line-height:1.7}
+  .wrap{max-width:1120px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--muted);margin:0 0 16px;font-size:13px}
+  code.inline{background:#0b1220;padding:1px 6px;border-radius:4px;font-size:12.5px}
+
+  /* 题目标签 */
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .tab{background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:999px;
+       padding:5px 13px;font-size:12.5px;cursor:pointer;transition:.15s}
+  .tab:hover{border-color:var(--accent);color:var(--text)}
+  .tab.active{background:var(--accent);color:#04121f;border-color:var(--accent);font-weight:600}
+
+  /* 原始数据面板 */
+  .data-panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+              margin-bottom:16px;overflow:hidden}
+  .data-panel summary{cursor:pointer;padding:11px 16px;font-size:13px;color:var(--accent);
+                      list-style:none;user-select:none}
+  .data-panel summary::-webkit-details-marker{display:none}
+  .data-panel summary::before{content:'▶';font-size:10px;display:inline-block;
+                              margin-right:8px;transition:transform .15s}
+  .data-panel[open] summary::before{transform:rotate(90deg)}
+  .data-panel summary:hover{background:rgba(56,189,248,.06)}
+  .data-panel .inner{padding:0 16px 14px}
+  .data-panel h3{font-size:12.5px;color:var(--muted);margin:0 0 7px;font-weight:600}
+  .two{display:flex;gap:16px;flex-wrap:wrap}
+  .two>div{flex:1 1 340px;min-width:300px}
+  .data-tip{margin:10px 0 0;font-size:12.5px;color:var(--muted)}
+  .data-tip b{color:var(--accent)}
+
+  /* 主卡片 */
+  .deck{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .deck-head{padding:16px 20px;background:#1b2a3d;border-bottom:1px solid var(--line)}
+  .deck-head h2{font-size:17px;margin:0 0 6px}
+  .deck-head .ask{margin:0;color:var(--muted);font-size:13px}
+  .tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;
+       border:1px solid var(--accent);color:var(--accent);margin-left:8px;vertical-align:2px}
+
+  /* 进度 */
+  .progress{display:flex;align-items:center;gap:6px;padding:12px 20px;border-bottom:1px solid var(--line);
+            flex-wrap:wrap;background:#16233a}
+  .dot{width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:transparent;
+       color:var(--muted);font-size:11.5px;cursor:pointer;display:inline-flex;align-items:center;
+       justify-content:center;transition:.15s;font-weight:600}
+  .dot:hover{border-color:var(--accent)}
+  .dot.done{background:rgba(56,189,248,.18);color:var(--accent);border-color:rgba(56,189,248,.5)}
+  .dot.active{background:var(--accent);color:#04121f;border-color:var(--accent)}
+  .progress .counter{margin-left:auto;color:var(--muted);font-size:12.5px}
+
+  /* 步骤内容 */
+  .slide{padding:18px 20px 6px;min-height:300px}
+  .slide h3{font-size:16px;margin:0 0 10px}
+  .step-num{color:var(--accent);font-weight:700}
+
+  pre.sql{background:#0b1220;border:1px solid var(--line);border-radius:8px;padding:12px 8px;margin:0 0 14px;
+          overflow-x:auto;font-size:13px;line-height:1.8;font-family:Consolas,"Cascadia Mono",monospace}
+  .sql .line{display:block;padding:1px 10px;border-radius:4px;white-space:pre}
+  .sql .line.new{background:rgba(56,189,248,.16);box-shadow:inset 2px 0 0 var(--accent)}
+  .sql .kw{color:#c792ea;font-weight:600}
+  .sql .cm{color:#64748b}
+
+  .result-head{display:flex;align-items:center;gap:12px;margin:0 0 8px}
+  .result-head .t{font-size:13px;font-weight:600}
+  .result-head .n{font-size:12.5px;color:var(--accent);font-weight:700}
+  .result-head .delta{font-size:12px;color:var(--muted)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel2);
+        border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:14px}
+  th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{background:#1b2a3d;color:var(--muted);font-size:12px;font-weight:600}
+  tr:last-child td{border-bottom:0}
+  tr.null-row td{color:var(--null);font-style:italic}
+  tr.hit td{background:rgba(34,197,94,.12)}
+  tr.gone td{color:#7f8ea3;text-decoration:line-through}
+
+  .note{border-left:3px solid var(--accent);background:rgba(56,189,248,.06);
+        padding:10px 14px;border-radius:0 6px 6px 0;font-size:13.5px;margin:0 0 14px}
+  .note b{color:var(--accent)}
+  .note.warn{border-left-color:var(--warn);background:rgba(251,191,36,.06)}
+  .note.warn b{color:var(--warn)}
+  .note.trap{border-left-color:var(--fail);background:rgba(239,68,68,.06)}
+  .note.trap b{color:var(--fail)}
+
+  /* 底部操作 */
+  .deck-foot{display:flex;align-items:center;gap:12px;padding:14px 20px;
+             border-top:1px solid var(--line);background:#16233a}
+  .deck-foot button{padding:9px 20px;border-radius:8px;border:1px solid var(--line);background:transparent;
+                    color:var(--text);font-size:13.5px;cursor:pointer;font-weight:600}
+  .deck-foot button:hover:not(:disabled){border-color:var(--accent)}
+  .deck-foot button.primary{background:var(--accent);color:#04121f;border-color:var(--accent)}
+  .deck-foot button:disabled{opacity:.35;cursor:not-allowed}
+  .deck-foot .hint{margin-left:auto;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>JOIN 分步课件</h1>
+<p class="sub">点「下一步」逐句执行，点「上一步」回看。每一页都是一次真实的执行结果快照，随你翻多久。<br>
+蓝底的行是这一步新增的 SQL。</p>
+
+<div class="tabs" id="tabs"></div>
+
+<details class="data-panel" open>
+  <summary>原始数据：两张表的全部内容（对照用，点这里收起 / 展开）</summary>
+  <div class="inner">
+    <div class="two" id="dataArea"></div>
+    <p class="data-tip">
+      这两张表是<b>执行任何 SQL 之前</b>的数据，没有经过任何过滤。每一页的结果都是从这两张表算出来的——
+      想核对某一行为什么出现或消失，回这里查它的原始字段值。
+    </p>
+  </div>
+</details>
+
+<div class="deck">
+  <div class="deck-head">
+    <h2 id="exTitle"></h2>
+    <p class="ask" id="exAsk"></p>
+  </div>
+
+  <div class="progress" id="progress"></div>
+
+  <div class="slide">
+    <h3><span class="step-num" id="stepNum"></span> <span id="stepLabel"></span></h3>
+    <pre class="sql" id="sqlBox"></pre>
+    <div class="result-head">
+      <span class="t">执行结果</span>
+      <span class="n" id="rowCount"></span>
+      <span class="delta" id="rowDelta"></span>
+    </div>
+    <div id="tableBox"></div>
+    <div id="noteBox"></div>
+  </div>
+
+  <div class="deck-foot">
+    <button id="prevBtn">← 上一步</button>
+    <button id="nextBtn" class="primary">下一步 →</button>
+    <span class="hint">← → 方向键也可以切换</span>
+  </div>
+</div>
+
+</div>
+
+<script>
+/* =========================================================
+   数据
+   ========================================================= */
+const TARGET = '774547173630226432';
+const KEY = 'person.firstNameLocal';
+
+const RELATIONS = [
+  { id: 'R1', person_id: 'P1', business_type: 1, business_id: TARGET, deleted: 0 },
+  { id: 'R2', person_id: 'P2', business_type: 1, business_id: TARGET, deleted: 0 },
+  { id: 'R3', person_id: 'P3', business_type: 2, business_id: TARGET, deleted: 0 },
+  { id: 'R4', person_id: 'P4', business_type: 1, business_id: '900000000000000001', deleted: 0 },
+  { id: 'R5', person_id: 'P5', business_type: 1, business_id: TARGET, deleted: 1 },
+  { id: 'R6', person_id: 'P6', business_type: 1, business_id: TARGET, deleted: 0 },
+];
+
+const KV = [
+  { id: 'K1', person_id: 'P1', field_key: KEY,              field_value: '张三',     deleted: 0 },
+  { id: 'K2', person_id: 'P1', field_key: 'person.mobile',  field_value: '91234567', deleted: 0 },
+  { id: 'K3', person_id: 'P2', field_key: 'person.mobile',  field_value: '98765432', deleted: 0 },
+  { id: 'K4', person_id: 'P3', field_key: KEY,              field_value: '王五',     deleted: 0 },
+  { id: 'K5', person_id: 'P4', field_key: KEY,              field_value: '赵六',     deleted: 0 },
+  { id: 'K6', person_id: 'P5', field_key: KEY,              field_value: '已删除',   deleted: 1 },
+];
+
+const KV_WITH_EMPTY = [
+  ...KV,
+  { id: 'K7', person_id: 'P2', field_key: KEY, field_value: '', deleted: 0 },
+];
+
+/* =========================================================
+   计算工具
+   ========================================================= */
+const leftBase = () =>
+  RELATIONS.filter((r) => r.business_type === 1 && r.business_id === TARGET && r.deleted === 0);
+
+const kvValid = (source = KV) => source.filter((k) => k.deleted === 0);
+const kvField = (key, source = KV) =>
+  source.filter((k) => k.deleted === 0 && k.field_key === key);
+
+/** 按 person_id 配对；mode='left' 时未配上的左行补 {k:null} */
+function pair(left, right, mode = 'inner') {
+  const out = [];
+  for (const r of left) {
+    const matched = right.filter((k) => k.person_id === r.person_id);
+    if (matched.length) matched.forEach((k) => out.push({ r, k }));
+    else if (mode === 'left') out.push({ r, k: null });
+  }
+  return out;
+}
+
+const kvCell = (k, field) => (k ? k[field] : 'NULL');
+const nullCell = (text) => ({ html: `<span style="color:var(--null);font-style:italic">${text}</span>` });
+
+/* =========================================================
+   课件内容：8 道题 × 若干步
+   每步：label 标题 / sql 当前累计 SQL（* 开头的行高亮）/ cols 表头 / rows 结果 / note 讲解 / delta 行数说明
+   ========================================================= */
+const EXERCISES = [
+
+/* ---------------- 题 1 ---------------- */
+{
+  tab: '题 1', title: '查出已经填了「名当地语言」的人', tag: '基础',
+  ask: '只要填了的人。最终返回 r.id、person_id、field_value。',
+  steps: [
+    {
+      label: '先把目标企业的 3 个人筛出来',
+      sql:
+`SELECT r.id, r.person_id
+FROM person_business_relation r
+*WHERE r.business_type = 1
+*  AND r.business_id = ${TARGET}
+*  AND r.deleted = 0;`,
+      cols: ['r.id', 'person_id'],
+      rows: () => leftBase().map((r) => [r.id, r.person_id]),
+      note: '左表 6 行只剩 3 行。<b>R3</b> 是店铺（business_type = 2）、<b>R4</b> 属于别的企业、<b>R5</b> 关联已删除，都被 WHERE 删掉。',
+      delta: '左表 6 行 → 3 行',
+    },
+    {
+      label: '加上 JOIN，先只按人配对',
+      sql:
+`SELECT r.id, r.person_id, k.field_key, k.field_value
+FROM person_business_relation r
+*JOIN person_kv k
+*  ON k.person_id = r.person_id
+* AND k.deleted = 0
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0;`,
+      cols: ['r.id', 'person_id', 'k.field_key', 'k.field_value'],
+      rows: () => pair(leftBase(), kvValid()).map(({ r, k }) => [r.id, r.person_id, k.field_key, k.field_value]),
+      note: 'JOIN 只负责配对，还没筛字段。P1 有两条 KV（张三、mobile），所以变成两行；<b>P6 一条 KV 都没有，INNER JOIN 直接不留他</b>。',
+      delta: '3 人 → 3 行（P1 占两行）',
+    },
+    {
+      label: '加 field_key，只留「名当地语言」',
+      sql:
+`SELECT r.id, r.person_id, k.field_key, k.field_value
+FROM person_business_relation r
+JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+*AND k.field_key = '${KEY}'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0;`,
+      cols: ['r.id', 'person_id', 'k.field_key', 'k.field_value'],
+      rows: () => pair(leftBase(), kvField(KEY)).map(({ r, k }) => [r.id, r.person_id, k.field_key, k.field_value]),
+      note: 'mobile 那一行被 ON 排除；P2 只有 mobile，配不上，整行消失。最终只剩 <b>P1 的张三</b>。',
+      delta: '3 行 → 1 行',
+    },
+    {
+      label: '完成：这就是「已填的人」的查询',
+      sql:
+`SELECT r.id, r.person_id, k.field_value
+FROM person_business_relation r
+JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+ AND k.field_key = '${KEY}'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0;`,
+      cols: ['r.id', 'person_id', 'field_value'],
+      rows: () => pair(leftBase(), kvField(KEY)).map(({ r, k }) => [r.id, r.person_id, k.field_value]),
+      note: '<b>INNER JOIN 下，field_key 写在 ON 或 WHERE 结果完全一样。</b>差别只在换成 LEFT JOIN 时才暴露——下一题。',
+      delta: '最终 1 行',
+    },
+  ],
+},
+
+/* ---------------- 题 2 ---------------- */
+{
+  tab: '题 2', title: '查出没填「名当地语言」的人', tag: '核心',
+  ask: '包括「填了别的字段」和「一条 KV 都没有」两种情况。',
+  steps: [
+    {
+      label: '先确认目标企业的 3 个人',
+      sql:
+`SELECT r.id, r.person_id
+FROM person_business_relation r
+*WHERE r.business_type = 1
+*  AND r.business_id = ${TARGET}
+*  AND r.deleted = 0;`,
+      cols: ['r.id', 'person_id'],
+      rows: () => leftBase().map((r) => [r.id, r.person_id]),
+      note: '这 3 个人是后面所有步骤的「保留对象」：P1、P2、P6。',
+      delta: '3 行',
+    },
+    {
+      label: '换成 LEFT JOIN，先不带字段条件',
+      sql:
+`SELECT r.id, r.person_id, k.field_key, k.field_value
+FROM person_business_relation r
+*LEFT JOIN person_kv k
+*  ON k.person_id = r.person_id
+* AND k.deleted = 0
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0;`,
+      cols: ['r.id', 'person_id', 'k.field_key', 'k.field_value'],
+      rows: () => pair(leftBase(), kvValid(), 'left')
+        .map(({ r, k }) => [r.id, r.person_id, k.field_key || nullCell('NULL'), k.field_value || nullCell('NULL')]),
+      note: 'LEFT JOIN 保证左表 3 个人都在。<b>P6 没有任何 KV，补了一行 NULL</b>；P1 仍占两行。',
+      delta: '3 人 → 4 行',
+    },
+    {
+      label: '关键一步：把 field_key 条件写进 ON',
+      sql:
+`SELECT r.id, r.person_id, k.field_key, k.field_value
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+*AND k.field_key = '${KEY}'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0;`,
+      cols: ['r.id', 'person_id', 'k.field_key', 'k.field_value'],
+      rows: () => pair(leftBase(), kvField(KEY), 'left')
+        .map(({ r, k }) => [r.id, r.person_id, k.field_key || nullCell('NULL'), k.field_value || nullCell('NULL')]),
+      note: 'field_key 在 ON 里，所以 <b>P2 的 mobile 行不再参与配对</b>，P2 变成 NULL 行。现在没填的人（P2、P6）都显示为 NULL。',
+      delta: '4 行 → 3 行',
+    },
+    {
+      label: '用 IS NULL 把它们挑出来',
+      sql:
+`SELECT r.id, r.person_id
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+ AND k.field_key = '${KEY}'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+*AND k.id IS NULL;`,
+      cols: ['r.id', 'person_id', '没填的原因'],
+      rows: () => pair(leftBase(), kvField(KEY), 'left')
+        .filter(({ k }) => !k)
+        .map(({ r }) => [r.id, r.person_id, r.person_id === 'P2' ? '只有 mobile' : '一条 KV 都没有']),
+      note: '<b>k.id IS NULL 就是「没配上」</b>。P1 配上了张三，被排除；剩下 P2、P6。',
+      delta: '3 行 → 2 行',
+    },
+    {
+      label: '完成：标准反连接写法',
+      sql:
+`SELECT r.id, r.person_id
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+ AND k.field_key = '${KEY}'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+  AND k.id IS NULL;`,
+      cols: ['r.id', 'person_id'],
+      rows: () => pair(leftBase(), kvField(KEY), 'left')
+        .filter(({ k }) => !k)
+        .map(({ r }) => [r.id, r.person_id]),
+      note: '<b>右表条件（deleted、field_key）必须写在 ON。</b>下一步看看写进 WHERE 会出什么事。',
+      delta: '最终 2 行',
+    },
+  ],
+},
+
+/* ---------------- 题 3 ---------------- */
+{
+  tab: '题 3', title: '陷阱：field_key 写进 WHERE 会怎样', tag: '核心',
+  ask: '同一套 LEFT JOIN，只把字段条件从 ON 挪到 WHERE，结果差多少？',
+  steps: [
+    {
+      label: '起点：LEFT JOIN，ON 只含 person_id 和 deleted',
+      sql:
+`SELECT r.id, r.person_id, k.field_key, k.field_value
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0;`,
+      cols: ['r.id', 'person_id', 'k.field_key', 'k.field_value'],
+      rows: () => pair(leftBase(), kvValid(), 'left')
+        .map(({ r, k }) => [r.id, r.person_id, k.field_key || nullCell('NULL'), k.field_value || nullCell('NULL')]),
+      note: '4 行：P1 两行、P2 一行 mobile、P6 一行 NULL。三个人的数据都在。',
+      delta: '4 行',
+    },
+    {
+      label: '把 field_key 写进 WHERE，逐行淘汰',
+      sql:
+`SELECT r.id, r.person_id, k.field_key, k.field_value
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+*  AND k.field_key = '${KEY}';`,
+      cols: ['r.id', 'person_id', 'k.field_key', 'k.field_value', 'WHERE 判定'],
+      rows: () => {
+        const all = pair(leftBase(), kvValid(), 'left');
+        return all.map(({ r, k }) => {
+          const ok = k && k.field_key === KEY;
+          return {
+            cls: ok ? 'hit' : 'gone',
+            cells: [r.id, r.person_id, k ? k.field_key : nullCell('NULL'),
+                    k ? k.field_value : nullCell('NULL'),
+                    { html: ok ? '<span style="color:var(--pass)">保留</span>'
+                               : `<span style="color:var(--fail)">删除：${!k ? 'NULL 比较结果为未知' : 'field_key 不匹配'}</span>` }],
+          };
+        });
+      },
+      note: '<b>P6 的 NULL 行被删：NULL = \'...\' 的结果是「未知」，不是 TRUE。</b><br><b>P2 的 mobile 行也被删：field_key 不匹配。</b>LEFT JOIN 辛苦保留的人，全被 WHERE 清掉了。',
+      delta: '4 行 → 1 行',
+    },
+    {
+      label: '对照：同样的条件写在 ON 里',
+      sql:
+`SELECT r.id, r.person_id, k.field_value
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+*AND k.field_key = '${KEY}'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0;`,
+      cols: ['r.id', 'person_id', 'field_value'],
+      rows: () => pair(leftBase(), kvField(KEY), 'left')
+        .map(({ r, k }) => [r.id, r.person_id, k ? k.field_value : nullCell('NULL')]),
+      note: '写在 ON 里：<b>3 行全部保留</b>，没填的人显示 NULL。这才是 LEFT JOIN 该有的效果。',
+      delta: '3 行',
+    },
+    {
+      label: '结论：两条 SQL 的结果对比',
+      sql:
+`-- 写法 A（错误）：field_key 在 WHERE
+--   → 1 行，只剩已填的人，LEFT JOIN 白写
+--
+-- 写法 B（正确）：field_key 在 ON
+--   → 3 行，没填的人以 NULL 出现`,
+      cols: ['写法', '条件位置', '结果行数', '没填的人'],
+      rows: () => [
+        ['A', 'WHERE', '1 行', { html: '<span style="color:var(--fail)">消失</span>' }],
+        ['B', 'ON', '3 行', { html: '<span style="color:var(--pass)">保留（NULL）</span>' }],
+      ],
+      note: '<b>规律：WHERE 里只要出现「右表列 = 非 NULL 值」，LEFT JOIN 就退化成 INNER JOIN。</b><br>想让左表的人保留，右表条件必须写在 ON。',
+      delta: '',
+    },
+  ],
+},
+
+/* ---------------- 题 4 ---------------- */
+{
+  tab: '题 4', title: '统计每人字段条数，没填显示 0', tag: 'GROUP BY',
+  ask: '返回 person_id 和 kv_count，没填过任何字段的人也要出现。',
+  steps: [
+    {
+      label: '先拿到明细：LEFT JOIN 的 4 行',
+      sql:
+`SELECT r.person_id, k.id AS kv_id
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0;`,
+      cols: ['person_id', 'kv_id'],
+      rows: () => pair(leftBase(), kvValid(), 'left').map(({ r, k }) => [r.person_id, k ? k.id : nullCell('NULL')]),
+      note: '这是还没聚合的原始明细。P6 只有一行 NULL。',
+      delta: '4 行',
+    },
+    {
+      label: '按 person_id 分组，先数「行数」',
+      sql:
+`SELECT r.person_id, COUNT(*) AS kv_count
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+*GROUP BY r.person_id;`,
+      cols: ['person_id', 'COUNT(*)'],
+      rows: () => [['P1', '2'], ['P2', '1'], ['P6', { html: '<span style="color:var(--fail)">1 ← 错的</span>' }]],
+      note: '<b>COUNT(*) 数的是行数，不是字段数。</b>P6 那一行是 LEFT JOIN 补的 NULL 行，也被算成了 1。',
+      delta: '3 组',
+    },
+    {
+      label: '改数 k.id：NULL 不计数',
+      sql:
+`SELECT r.person_id, COUNT(k.id) AS kv_count
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+GROUP BY r.person_id;`,
+      cols: ['person_id', 'COUNT(*)', 'COUNT(k.id)'],
+      rows: () => [
+        ['P1', '2', '2'],
+        ['P2', '1', '1'],
+        ['P6', '1', { html: '<span style="color:var(--pass)">0 ← 对</span>' }],
+      ],
+      note: '<b>COUNT(列名) 跳过 NULL；COUNT(*) 不跳过。</b>LEFT JOIN 之后统计，永远写具体列名，用主键 k.id 最稳。',
+      delta: '3 组',
+    },
+    {
+      label: '完成：这就是要的统计结果',
+      sql:
+`SELECT r.person_id, COUNT(k.id) AS kv_count
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+GROUP BY r.person_id
+ORDER BY r.person_id;`,
+      cols: ['person_id', 'kv_count'],
+      rows: () => [['P1', '2'], ['P2', '1'], ['P6', '0']],
+      note: 'P6 显示 0，正是「一条字段都没填」的人。',
+      delta: '最终 3 行',
+    },
+  ],
+},
+
+/* ---------------- 题 5 ---------------- */
+{
+  tab: '题 5', title: '查出完全没有填写任何动态字段的人', tag: '反连接',
+  ask: '注意：这里不限定具体字段，只要是「一条 KV 都没有」。',
+  steps: [
+    {
+      label: 'LEFT JOIN，带出所有人的 KV',
+      sql:
+`SELECT r.id, r.person_id, k.id AS kv_id
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0;`,
+      cols: ['r.id', 'person_id', 'kv_id'],
+      rows: () => pair(leftBase(), kvValid(), 'left').map(({ r, k }) => [r.id, r.person_id, k ? k.id : nullCell('NULL')]),
+      note: 'P1 有 2 条、P2 有 1 条，<b>P6 是 NULL</b>。',
+      delta: '4 行',
+    },
+    {
+      label: '加 k.id IS NULL',
+      sql:
+`SELECT r.id, r.person_id
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+*AND k.id IS NULL;`,
+      cols: ['r.id', 'person_id'],
+      rows: () => pair(leftBase(), kvValid(), 'left').filter(({ k }) => !k).map(({ r }) => [r.id, r.person_id]),
+      note: '只有 P6。<b>注意这里 ON 里没有 field_key 条件</b>——和题 2 的区别就在这：题 2 找「没填这个字段」，本题找「一个字段都没填」。',
+      delta: '4 行 → 1 行',
+    },
+    {
+      label: '等价写法：NOT EXISTS',
+      sql:
+`SELECT r.id, r.person_id
+FROM person_business_relation r
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+* AND NOT EXISTS (
+*     SELECT 1 FROM person_kv k
+*      WHERE k.person_id = r.person_id
+*        AND k.deleted = 0
+* );`,
+      cols: ['r.id', 'person_id'],
+      rows: () => [['R6', 'P6']],
+      note: '两种写法结果相同。<b>不用 NOT IN 的原因</b>：如果子查询结果里出现 NULL，NOT IN 会让整个查询返回空。',
+      delta: '1 行',
+    },
+  ],
+},
+
+/* ---------------- 题 6 ---------------- */
+{
+  tab: '题 6', title: '导出全部人员 + 字段值，没填也出现', tag: '业务场景',
+  ask: '企业详情的「相关人士」列表就是这种查询：每个人一行，没填的留空。',
+  steps: [
+    {
+      label: '先看清 3 个人',
+      sql:
+`SELECT r.id, r.person_id
+FROM person_business_relation r
+*WHERE r.business_type = 1
+*  AND r.business_id = ${TARGET}
+*  AND r.deleted = 0;`,
+      cols: ['r.id', 'person_id'],
+      rows: () => leftBase().map((r) => [r.id, r.person_id]),
+      note: 'P1 填了、P2 只填了手机号、P6 什么都没填。',
+      delta: '3 行',
+    },
+    {
+      label: 'LEFT JOIN 带出所有 KV',
+      sql:
+`SELECT r.id, r.person_id, k.field_key, k.field_value
+FROM person_business_relation r
+*LEFT JOIN person_kv k
+*  ON k.person_id = r.person_id
+* AND k.deleted = 0
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0;`,
+      cols: ['r.id', 'person_id', 'k.field_key', 'k.field_value'],
+      rows: () => pair(leftBase(), kvValid(), 'left')
+        .map(({ r, k }) => [r.id, r.person_id, k.field_key || nullCell('NULL'), k.field_value || nullCell('NULL')]),
+      note: 'P1 占两行（张三、mobile），P2 一行 mobile，P6 一行 NULL。',
+      delta: '4 行',
+    },
+    {
+      label: '把字段条件放进 ON，固定每人一行',
+      sql:
+`SELECT r.id, r.person_id, k.field_value
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+*AND k.field_key = '${KEY}'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+*ORDER BY r.id;`,
+      cols: ['r.id', 'person_id', 'field_value'],
+      rows: () => pair(leftBase(), kvField(KEY), 'left')
+        .map(({ r, k }) => [r.id, r.person_id, k ? k.field_value : nullCell('NULL')]),
+      note: '<b>P2 显示 NULL，而不是它的 mobile 号码。</b>因为 ON 已经把 mobile 行排除了，LEFT JOIN 只能补 NULL。这一步最容易被误解。',
+      delta: '3 行，每行一个人',
+    },
+    {
+      label: '完成：详情列表的实际查询',
+      sql:
+`SELECT r.id, r.person_id, k.field_value
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+ AND k.field_key = '${KEY}'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+ORDER BY r.id;`,
+      cols: ['r.id', 'person_id', 'field_value'],
+      rows: () => pair(leftBase(), kvField(KEY), 'left')
+        .map(({ r, k }) => [r.id, r.person_id, k ? k.field_value : nullCell('NULL')]),
+      note: '和题 2 的区别：题 2 只留没填的人（加 IS NULL），这里要所有人（不加）。',
+      delta: '最终 3 行',
+    },
+  ],
+},
+
+/* ---------------- 题 7 ---------------- */
+{
+  tab: '题 7', title: '字段值是空字符串，算不算没填', tag: '边界',
+  ask: '假设 person_kv 多了一行：K7 / P2 / person.firstNameLocal / \'\'（空串）/ deleted = 0。',
+  steps: [
+    {
+      label: '先看新增后的数据',
+      sql:
+`SELECT id, person_id, field_key, field_value, deleted
+*FROM person_kv
+WHERE deleted = 0
+  AND field_key = '${KEY}'
+ORDER BY id;`,
+      cols: ['id', 'person_id', 'field_key', 'field_value', 'deleted'],
+      rows: () => kvField(KEY, KV_WITH_EMPTY)
+        .map((k) => [k.id, k.person_id, k.field_key,
+                     k.field_value === '' ? { html: '<span style="color:var(--warn)">\'\'（空串）</span>' } : k.field_value,
+                     String(k.deleted)]),
+      note: '<b>K7 是真实存在的一行</b>，只是值为空串。它和「没有这一行」是两回事。',
+      delta: '3 行',
+    },
+    {
+      label: 'LEFT JOIN 之后，P2 不再是 NULL',
+      sql:
+`SELECT r.id, r.person_id, k.id AS kv_id, k.field_value
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+ AND k.field_key = '${KEY}'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+ORDER BY r.id;`,
+      cols: ['r.id', 'person_id', 'kv_id', 'field_value'],
+      rows: () => pair(leftBase(), kvField(KEY, KV_WITH_EMPTY), 'left')
+        .map(({ r, k }) => [r.id, r.person_id, k ? k.id : nullCell('NULL'),
+                            k ? (k.field_value === '' ? { html: '<span style="color:var(--warn)">\'\'</span>' } : k.field_value)
+                              : nullCell('NULL')]),
+      note: 'P2 现在配上了 K7，值是空串。界面上看起来还是「空」，但 SQL 里 <code class="inline">\'\'</code> 和 <code class="inline">NULL</code> 不同。',
+      delta: '3 行',
+    },
+    {
+      label: '只用 IS NULL，会漏掉 P2',
+      sql:
+`SELECT r.id, r.person_id
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+ AND k.field_key = '${KEY}'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+*AND k.id IS NULL;`,
+      cols: ['r.id', 'person_id'],
+      rows: () => [['R6', 'P6']],
+      note: '<b>只抓到 P6。</b>P2 有 K7 这一行，k.id 不是 NULL，所以漏掉了——但业务上 P2 的名当地语言确实是空的。',
+      delta: '1 行（漏了 P2）',
+    },
+    {
+      label: '两种「空」都要覆盖',
+      sql:
+`SELECT r.id, r.person_id,
+       CASE WHEN k.id IS NULL THEN '行不存在'
+            ELSE '值为空串' END AS empty_type
+FROM person_business_relation r
+LEFT JOIN person_kv k
+  ON k.person_id = r.person_id
+ AND k.deleted = 0
+ AND k.field_key = '${KEY}'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+*AND (k.id IS NULL OR k.field_value = '')
+ORDER BY r.id;`,
+      cols: ['r.id', 'person_id', 'empty_type'],
+      rows: () => [['R2', 'P2', '值为空串'], ['R6', 'P6', '行不存在']],
+      note: '<b>k.id IS NULL OR k.field_value = \'\'</b> 才完整。本项目写入时置空会删行，正常不会出现空串；但历史数据、批量导入、别的系统直写都可能留下。',
+      delta: '2 行',
+    },
+  ],
+},
+
+/* ---------------- 题 8 ---------------- */
+{
+  tab: '题 8', title: '竖表转横表：两个字段并排', tag: '进阶',
+  ask: '每人一行，列是 person_id、first_name_local、mobile。详情接口组装多个动态字段就是这个套路。',
+  steps: [
+    {
+      label: '先只取第一个字段',
+      sql:
+`SELECT r.person_id, k1.field_value AS first_name_local
+FROM person_business_relation r
+*LEFT JOIN person_kv k1
+*  ON k1.person_id = r.person_id
+* AND k1.deleted = 0
+* AND k1.field_key = '${KEY}'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+ORDER BY r.person_id;`,
+      cols: ['person_id', 'first_name_local'],
+      rows: () => pair(leftBase(), kvField(KEY), 'left')
+        .map(({ r, k }) => [r.person_id, k ? k.field_value : nullCell('NULL')]),
+      note: '和题 6 一样：没填的人是 NULL，但仍然出现。',
+      delta: '3 行',
+    },
+    {
+      label: '再加第二个字段：再来一次 LEFT JOIN',
+      sql:
+`SELECT r.person_id,
+       k1.field_value AS first_name_local,
+       k2.field_value AS mobile
+FROM person_business_relation r
+LEFT JOIN person_kv k1
+  ON k1.person_id = r.person_id
+ AND k1.deleted = 0
+ AND k1.field_key = '${KEY}'
+*LEFT JOIN person_kv k2
+*  ON k2.person_id = r.person_id
+* AND k2.deleted = 0
+* AND k2.field_key = 'person.mobile'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+ORDER BY r.person_id;`,
+      cols: ['person_id', 'first_name_local', 'mobile'],
+      rows: () => {
+        const km = kvField('person.mobile');
+        return leftBase().map((r) => {
+          const k1 = kvField(KEY).find((k) => k.person_id === r.person_id);
+          const k2 = km.find((k) => k.person_id === r.person_id);
+          return [r.person_id,
+                  k1 ? k1.field_value : nullCell('NULL'),
+                  k2 ? k2.field_value : nullCell('NULL')];
+        });
+      },
+      note: '<b>每多一个字段就多一次 LEFT JOIN</b>，各自带自己的 field_key 条件，用 k1、k2 区分。<br>P1 两个都有；P2 只有手机号；P6 两个都没有。',
+      delta: '3 行 × 3 列',
+    },
+    {
+      label: '完成：详情接口的多字段查询',
+      sql:
+`SELECT r.person_id,
+       k1.field_value AS first_name_local,
+       k2.field_value AS mobile
+FROM person_business_relation r
+LEFT JOIN person_kv k1
+  ON k1.person_id = r.person_id
+ AND k1.deleted = 0
+ AND k1.field_key = '${KEY}'
+LEFT JOIN person_kv k2
+  ON k2.person_id = r.person_id
+ AND k2.deleted = 0
+ AND k2.field_key = 'person.mobile'
+WHERE r.business_type = 1
+  AND r.business_id = ${TARGET}
+  AND r.deleted = 0
+ORDER BY r.person_id;`,
+      cols: ['person_id', 'first_name_local', 'mobile'],
+      rows: () => {
+        const km = kvField('person.mobile');
+        return leftBase().map((r) => {
+          const k1 = kvField(KEY).find((k) => k.person_id === r.person_id);
+          const k2 = km.find((k) => k.person_id === r.person_id);
+          return [r.person_id,
+                  k1 ? k1.field_value : nullCell('NULL'),
+                  k2 ? k2.field_value : nullCell('NULL')];
+        });
+      },
+      note: '<b>为什么都是 LEFT JOIN：</b>任一字段缺失时，只该让那一列变 NULL，不能把整个人弄丢。字段越多，JOIN 次数越多——这也是竖表模式的代价。',
+      delta: '最终 3 行',
+    },
+  ],
+},
+
+];
+
+/* =========================================================
+   渲染
+   ========================================================= */
+const state = { ex: 0, step: 0 };
+const $ = (id) => document.getElementById(id);
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function sqlLineHtml(line, isNew) {
+  let s = escapeHtml(line);
+  s = s.replace(/\b(LEFT JOIN|SELECT|FROM|WHERE|JOIN|ON|AND|OR|AS|GROUP BY|ORDER BY|COUNT|CASE|WHEN|THEN|ELSE|END|NOT EXISTS|EXISTS)\b/g,
+                  '<span class="kw">$1</span>');
+  return `<span class="line${isNew ? ' new' : ''}">${s || ' '}</span>`;
+}
+
+function buildTable(cols, rows) {
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const tr = document.createElement('tr');
+  cols.forEach((c) => {
+    const th = document.createElement('th');
+    th.textContent = c;
+    tr.appendChild(th);
+  });
+  thead.appendChild(tr);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  rows.forEach((row) => {
+    const data = Array.isArray(row) ? { cells: row } : row;
+    const tr = document.createElement('tr');
+    if (data.cls) tr.className = data.cls;
+    if (!(data.cells || []).length) {
+      const td = document.createElement('td');
+      td.colSpan = cols.length;
+      td.style.color = 'var(--muted)';
+      td.textContent = '（0 行）';
+      tr.appendChild(td);
+    } else {
+      (data.cells || []).forEach((c) => {
+        const td = document.createElement('td');
+        if (c && typeof c === 'object' && c.html !== undefined) td.innerHTML = c.html;
+        else td.textContent = c === undefined || c === null ? '' : String(c);
+        tr.appendChild(td);
+      });
+    }
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  return table;
+}
+
+function renderTabs() {
+  const box = $('tabs');
+  box.innerHTML = '';
+  EXERCISES.forEach((ex, i) => {
+    const b = document.createElement('button');
+    b.className = 'tab' + (i === state.ex ? ' active' : '');
+    b.textContent = ex.tab;
+    b.addEventListener('click', () => {
+      state.ex = i;
+      state.step = 0;
+      render();
+    });
+    box.appendChild(b);
+  });
+}
+
+function renderProgress() {
+  const ex = EXERCISES[state.ex];
+  const box = $('progress');
+  box.innerHTML = '';
+  ex.steps.forEach((_, i) => {
+    const d = document.createElement('button');
+    d.className = 'dot' + (i === state.step ? ' active' : (i < state.step ? ' done' : ''));
+    d.textContent = String(i + 1);
+    d.addEventListener('click', () => { state.step = i; render(); });
+    box.appendChild(d);
+  });
+  const counter = document.createElement('span');
+  counter.className = 'counter';
+  counter.textContent = `第 ${state.step + 1} / ${ex.steps.length} 步`;
+  box.appendChild(counter);
+}
+
+/** 顶部「原始数据」面板：两张源表的完整内容 */
+function renderData() {
+  const area = $('dataArea');
+  area.innerHTML = '';
+
+  const left = document.createElement('div');
+  const leftTitle = document.createElement('h3');
+  leftTitle.textContent = 'person_business_relation（人员关联，左表）';
+  left.appendChild(leftTitle);
+  left.appendChild(buildTable(
+    ['id', 'person_id', 'business_type', 'business_id', 'deleted'],
+    RELATIONS.map((r) => [r.id, r.person_id, String(r.business_type), r.business_id, String(r.deleted)])
+  ));
+
+  const right = document.createElement('div');
+  const rightTitle = document.createElement('h3');
+  rightTitle.textContent = 'person_kv（动态字段，右表）';
+  right.appendChild(rightTitle);
+  right.appendChild(buildTable(
+    ['id', 'person_id', 'field_key', 'field_value', 'deleted'],
+    KV.map((k) => [k.id, k.person_id, k.field_key, k.field_value, String(k.deleted)])
+  ));
+
+  area.append(left, right);
+}
+
+function render() {
+  renderTabs();
+  renderProgress();
+
+  const ex = EXERCISES[state.ex];
+  const st = ex.steps[state.step];
+
+  $('exTitle').innerHTML = `${ex.title}<span class="tag">${ex.tag}</span>`;
+  $('exAsk').textContent = ex.ask;
+
+  $('stepNum').textContent = `第 ${state.step + 1} 步`;
+  $('stepLabel').textContent = st.label;
+
+  // SQL：以 * 开头的行是本步新增
+  const sqlHtml = st.sql.split('\n')
+    .map((line) => {
+      const isNew = line.startsWith('*');
+      return sqlLineHtml(isNew ? line.slice(1) : line, isNew);
+    })
+    .join('');
+  $('sqlBox').innerHTML = sqlHtml;
+
+  // 结果表
+  const rows = st.rows();
+  $('rowCount').textContent = `${rows.length} 行`;
+  $('rowDelta').textContent = st.delta || '';
+
+  const box = $('tableBox');
+  box.innerHTML = '';
+  box.appendChild(buildTable(st.cols, rows));
+
+  // 讲解
+  $('noteBox').innerHTML = `<div class="note">${st.note}</div>`;
+
+  // 按钮
+  $('prevBtn').disabled = state.step === 0;
+  $('nextBtn').disabled = state.step === ex.steps.length - 1;
+  $('nextBtn').textContent = state.step === ex.steps.length - 1 ? '已是最后一步' : '下一步 →';
+}
+
+/* =========================================================
+   事件
+   ========================================================= */
+$('prevBtn').addEventListener('click', () => {
+  if (state.step > 0) { state.step -= 1; render(); }
+});
+$('nextBtn').addEventListener('click', () => {
+  const ex = EXERCISES[state.ex];
+  if (state.step < ex.steps.length - 1) { state.step += 1; render(); }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') $('nextBtn').click();
+  if (e.key === 'ArrowLeft') $('prevBtn').click();
+});
+
+renderData();
+render();
+</script>
+</body>
+</html>
