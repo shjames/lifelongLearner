@@ -1,0 +1,256 @@
+---
+title: 日记：2026/10/29
+tags:
+  - 日记
+  - 技术
+  - 学习
+summary: 给 kpay-crm-web 写的一份微前端手册，外加七个能在浏览器里动手的实验
+category: diary
+---
+
+这阵子在啃 kpay-crm-web 的微前端架构。读文档总是在「大概懂了」和「真说不清」之间摇摆，于是干脆按源码把整条链路捋了一遍，写成一份手册，又配了个能在浏览器里点着玩的实验室，一起存进博客。
+
+两份东西都能直接点开：
+
+👉 [打开手册：KPay CRM 微前端手册](/diary/micro-frontend-handbook.html)
+
+👉 [打开交互实验室：micro-frontend-lab](/diary/micro-frontend-lab/index.html)
+
+手册是单文件 HTML，实验室是一整个目录（纯原生 JS，无构建、无依赖、无网络请求），都不需要本地起服务。
+
+## 全景：一个 URL 走完全程
+
+手册开篇用一张图把整条路串起来，起点是地址栏，终点是子应用的 React 代码跑在基座页面里：
+
+```
+http://crm-sg-test.kpay-test.com/system/roleList
+        │
+        ▼
+  基座 kpay-crm-web（umi SPA）
+    umi 匹配到 /system/roleList
+    → component = <MicroAppMain name="iam-app" url="http://iam.test.a.../">
+        │
+        ▼
+  浏览器自定义元素 <micro-app name url>
+        │
+        ▼
+  micro-app 运行时
+    ├─ fetch(url) 拿到子应用 index.html
+    ├─ 拆成 <micro-app-head> + <micro-app-body>
+    ├─ 建 with 沙箱（伪 window + Proxy）
+    ├─ 把子应用的 <script> 包进 with(...) 执行
+    └─ CSS 选择器加前缀 micro-app[name=iam-app]
+        │
+        ▼
+  子应用 React 代码跑在基座页面里
+  DOM 挂在 <micro-app-body> 下
+  侧边栏因 __MICRO_APP_ENVIRONMENT__ 而不渲染
+```
+
+先说清几个名词，后面才不会打架：
+
+| 名词 | 在本项目里指什么 |
+|---|---|
+| 基座（主应用） | kpay-crm-web 本身，umi 3.5 + React 18 + antd 4 |
+| 子应用（微应用） | 14 个独立部署的前端 SPA：iam、kcss、crm-merchant…… |
+| entry URL | 子应用静态站点地址，如 `http://iam.test.a.kpay-test.com/`，返回 HTML 不是 JSON |
+| `appName` | 子应用的唯一标识，如 `iam-app`、`crm-kcss`，作为 `<micro-app name>` |
+| 沙箱 | 让子应用 JS 的全局变量不污染基座 window 的机制 |
+| `window.microApp` | 注入给子应用的**通信 API 对象**，不是沙箱本身 |
+
+最后一行是最容易搞错的一条，下面会专门说。
+
+## 四块原生基础
+
+微前端听起来复杂，剥到底层其实是四个浏览器原生能力拼起来的，手册第 1–4 章一章讲一块：
+
+| 章节 | 原生能力 | 解决的问题 |
+|---|---|---|
+| §1 | Custom Elements | 让 `<micro-app>` 这个标签在浏览器里真正「活」起来，有生命周期回调 |
+| §2 | Shadow DOM（本项目改造版） | 子应用的 CSS 不把基座刷成红色，反过来也一样 |
+| §3 | `with` + Proxy | 子应用的全局变量关在自己的伪 window 里 |
+| §4 | fetch + DOMParser | 把子应用的 HTML 搬进基座文档，而不是塞进 iframe |
+
+关于 §2 有一点值得记：micro-app 并没有真的用 Shadow DOM 做隔离，而是**在构建时给 CSS 选择器加宿主前缀**（`micro-app[name=iam-app] .btn`）。手册里管它叫「改造版」——因为它保留了 Shadow DOM 的隔离效果，却避开了 Shadow DOM 带来的 React 事件代理、第三方组件库样式穿透这些麻烦。
+
+§4 那条也解释了为什么不用 iframe：iframe 能装任意站点，代价是子应用的弹窗出不了框、基座拿不到子应用的 DOM、路由和滚动都要跨窗口通信。而微前端要的是**看起来像同一个页面**，所以必须把 DOM 搬进来。
+
+## 沙箱是整份手册里最绕的一块
+
+第三章用了 400 多行，因为它有三层对象叠在一起，第一次看几乎必然晕。核心其实只有一句话：**读穿透，写隔离。**
+
+```
+真 window (rawWindow)
+   ▲ 读穿透（沙箱里找不到就回落到这里）
+   │
+proxyWindow  = new Proxy(microAppWindow)     ← 子应用代码里的 window 就是它
+   ▲
+   │ __MICRO_APP_WINDOW__ 指向
+microAppWindow = new CustomWindow()          ← with 的作用域对象，子应用全局变量都在这
+```
+
+- `microAppWindow` 是「搬家后的 window」，变量真的存在这
+- `proxyWindow` 是门面，负责读穿透和几处特殊映射（`location`、`Worker`）
+- `with (proxyWindow.__MICRO_APP_WINDOW__) { ... }` 让子应用脚本里的自由变量查找先落到沙箱上
+
+光有 `with` 不够，还得让子应用的 `<script>` 在 `with` 里执行，所以要重写代码：
+
+```js
+;(function (proxyWindow) {
+  with (proxyWindow.__MICRO_APP_WINDOW__) {
+    (function (window, self, globalThis, document, ...) {
+      /* 子应用原始代码原封不动放这里 */
+    }).call(proxyWindow, window, self, globalThis, document, ...);
+  }
+})(window.__MICRO_APP_PROXY_WINDOW__);
+```
+
+另外还有几类 API 必须额外打补丁，否则沙箱就是漏的：
+
+| API | 怎么处理 | 为什么 |
+|---|---|---|
+| `window.addEventListener` | 记录到 Map，卸载时按 appName 清空 | 否则子应用卸载后监听器残留 |
+| `setTimeout/setInterval` | 改写并记录 id，卸载时批量 clear | 定时器泄漏 |
+| `document.querySelector` | 限定在 `<micro-app name=xxx>` 范围内查 | 避免子应用查到自己以外的 DOM |
+| `history.pushState` | 换成 memory history | 避免子应用改掉基座地址栏 |
+| `Image`、`Worker`、`fetch` | 按 `disable-patch-request` 决定是否劫持 | 本项目开了，请求保持原样 |
+
+### `window.microApp` 不是沙箱
+
+这条单独拎出来，因为它是最容易混淆的一点。源码里给子应用注入的是这一行：
+
+```js
+microAppWindow.microApp = assign(new EventCenterForMicroApp(appName), {
+  removeDomScope, pureCreateElement, location: microAppWindow.location, router,
+});
+```
+
+也就是说，`microApp` 只是**被塞进沙箱的一个属性**，它自己是个通信对象。沙箱负责「隔离」，`window.microApp` 负责「通信」，两者是并列关系，不是容器关系。
+
+判断「我在不在沙箱里」的标志也不是 `microApp` 存不存在，而是：
+
+```js
+window.__MICRO_APP_ENVIRONMENT__ === true
+```
+
+手册里列了沙箱注入的一整组全局变量（`__MICRO_APP_NAME__`、`__MICRO_APP_URL__`、`__MICRO_APP_PUBLIC_PATH__`、`__MICRO_APP_BASE_ROUTE__`、`__MICRO_APP_SANDBOX_TYPE__`、`rawWindow`……），并给了一条排查命令：
+
+```js
+window.__MICRO_APP_PROXY_WINDOW__     // with 沙箱下才有
+document.querySelector('micro-app').__MICRO_APP_NAME__
+```
+
+## 通信：为什么不是 postMessage
+
+这是我在读之前想当然搞错的地方。
+
+`postMessage` 是**跨域**场景的手段——iframe 之间、不同 origin 的窗口之间，因为拿不到对方的 JS 运行时，只能序列化字符串过去。但本项目的子应用和基座同源部署、共享同一个 JS 运行时，直接传对象引用就行，没有任何序列化成本。
+
+micro-app 也没用 DOM 的 `CustomEvent`，而是自己写了一个轻量的 `EventCenter`（`Map` 存 `name -> { data, callbacks }`）。事件名用 appName 拼成 `__iam-app_from_base_app__` 这种形式，保证不同子应用互不干扰。
+
+四组 API 对应四个方向：
+
+| 方向 | 发送方 | 接收方 |
+|---|---|---|
+| 基座 → 指定子应用 | `microApp.setData(appName, data)` | 子应用 `window.microApp.addDataListener(cb)` |
+| 子应用 → 基座 | `window.microApp.dispatch(data)` | 基座 `microApp.addDataListener(appName, cb)` |
+| 基座 → 所有子应用 | `microApp.setGlobalData(data)` | 子应用 `addGlobalDataListener(cb)` / `getGlobalData()` |
+| 子应用 → 基座（要返回值） | `window.microApp.forceDispatch(data, cb)` | 基座 listener 直接 `return` 结果 |
+
+`forceDispatch` 是「请求-响应」模式，本项目拿它做 token 刷新：子应用发一句「帮我刷一下」，基座 listener 里 `await _refreshToken()`，把结果 `return` 回去，子应用在回调里拿到新的 accessToken。
+
+还有一个设计细节值得记：`setData` 是**带缓存**的。基座在 `onBeforemount` 里就先 `setData` 下发权限和语言，此时子应用可能连监听都还没绑上；等子应用启动绑定时，`addDataListener(appName, cb, autoTrigger)` 的第三个参数会让它立刻收到那份缓存。**先发后订阅不会丢消息。**
+
+## 路由：native-scope
+
+子应用自带 react-router，它要读 `window.location.pathname`。但在基座里，`location` 是基座的 `/system/roleList`，子应用想看到的是「自己的」路径，push 时又不能把基座地址栏改乱。
+
+micro-app 给了五种模式，本项目用的是 `native-scope`：地址栏用基座的，但子应用视角的 `location.origin` / `location.href` 指回**子应用自己的域名**。
+
+这一条不是洁癖，是实用：子应用里 `window.location.href` 拿到的是 `http://iam.test.a.../system/roleList`，所以它拼资源路径、跳登录页时不会跑到基座域名下。
+
+至于同步方向，手册里总结了八个字——**基座永远不改子应用的内部路由，只告诉它「地址变了」**：
+
+```js
+export function onRouteChange({ location, matchedRoutes }) {
+  const last = matchedRoutes[matchedRoutes.length - 1]?.route;
+  if (last?.system) {                       // 只有子应用路由才有 system 字段
+    microApp.setData(last.system, {
+      location,
+      masterOrigin: window.location.origin,
+      type: MICRO_APP_TYPE.MASTER_ROUTES_CHANGE,
+    });
+  }
+}
+```
+
+## 接地气的部分：14 个子应用怎么管
+
+前面六章讲原理，第七章讲 `@kpay/adapter` 这层封装——结论有点出乎意料：`@kpay/adapter-micro-app` 的 `index.js` 全文只有 8 行，**只是把第三方的 `microApp` 换个名字再导出，再加两个自己写的组件，没有包任何逻辑**。价值不在「封装」，在于依赖树收敛：业务侧只依赖 `@kpay/adapter` 一个包，底下 `micro-app` 升版时不用挨个仓库改。
+
+第八章是真正会天天用到的落地约定：
+
+**新增一个子应用页面，五步。**
+
+1. 建 `src/MicroApp/SubApp/XxxApp.tsx`
+2. 声明路由，每条带 `system: appName` 和 `component`
+3. 指定 `anchor: { name: 'system', position: 'child' | 'before' | 'after' }` —— 决定菜单挂在哪个节点下面
+4. 在 `src/app.tsx` 的 `patchRoutes` 里注册
+5. 在 `src/MicroApp/SubApp/index.ts` 导出
+
+兜底逻辑在 `SubApp/utils.ts` 的 `commitFilterRouter` 末尾：没被任何 anchor 认领的节点，会被 push 到菜单末尾，不会凭空消失。
+
+**地址注入**是三段接力：构建期 `document.ejs` 里写占位符 `UMI_APP_SUB_IAM_APP_URL` → 运行期容器脚本 `env_read.sh` 替换 → 浏览器里从 `window.env.SUB_IAM_APP_URL_VALUE` 读出来。自查用一条命令：
+
+```bash
+curl -s http://<环境域名>/ | grep -c "UMI_APP_"
+```
+
+输出大于 0，说明有占位符没被替换。
+
+**子应用侧三条约定**：检测到 `__MICRO_APP_ENVIRONMENT__` 就不渲染自己的 Layout；路由跳转走 `dispatch(CONTROLLER_ROUTE_CHANGE)`，不要 `history.push`；不要改 `document.title` 和 `document.body` 的样式。
+
+## 排错清单
+
+第九章是一张症状对照表，八条，都是实际踩过的：
+
+| 症状 | 大概率原因 |
+|---|---|
+| 白屏 + 「服務加載失敗」 | `url` 非法（占位符没替换），基座根本没发 fetch |
+| entry 请求失败 | 子应用域名不通，或跨域头没配 |
+| 样式乱了 | CSS 前缀没加上，或子应用用了 `body` / `html` 选择器 |
+| 全局变量互相污染 | 子应用直接操作了 `rawWindow`，绕过了沙箱 |
+| 地址栏被子应用改了 | 子应用没走 memory router，直接 `history.pushState` |
+| 权限按钮不更新 | `MASTER_ACCESS_DATA` 没重新下发 |
+| 定时器泄漏 | 卸载时没清 `setInterval` |
+| 菜单项没出现 | 路由缺 `system` 字段，或 anchor 名字写错 |
+
+调试常用这几句：`microApp.getAllApps()`、`microApp.getActiveApps()`、`microApp.getData('iam-app')`、`document.querySelector('micro-app[name=iam-app]').querySelector('micro-app-body')`。
+
+第十章留了 10 道自检题，每题标了答案在哪一节。我现在能答上七八道——剩下两三道（沙箱对 `instanceof` 的影响、`native-scope` 下后退键的行为）还得回头翻源码。
+
+## 七个实验
+
+手册是读的，实验室是动手的。七个 Lab 和 §1–§7 一一对应：
+
+| Lab | 你会亲手做什么 |
+|---|---|
+| L1 | 注册 `<my-card>`，观察 4 个生命周期回调的触发时机 |
+| L2 | 对比「CSS 原样注入污染基座」vs「加宿主前缀后互不影响」，实时改写选择器 |
+| L3 | 同一段代码用 raw / 沙箱两种方式执行；再操作一个真实 Proxy 逐个触发 trap |
+| L4 | 用 DOMParser 解析真实 entry HTML，看 head/body 怎么拆、相对路径怎么补全 |
+| L5 | 跑通 setData / dispatch / setGlobalData / forceDispatch 四条通道，做「解绑 → 发消息 → 重绑看缓存回放」 |
+| L6 | 切换 native / native-scope / pure，观察地址栏、子应用 location、router 匹配路径的差异 |
+| L7 | 用约 260 行的迷你内核同时挂载两个真实子应用，验证 DOM 搬移、样式隔离、沙箱隔离、通信全链路 |
+
+每个 Lab 底部有一组验收断言，全部通过才算完成；进度存在 `localStorage` 里，顶部进度条会走。
+
+## 一点体会
+
+写这份东西最大的收获，不是搞懂了某个 API，而是发现**很多「架构」拆开之后，剩下的都是几个浏览器原生能力**。Custom Elements、Shadow DOM、Proxy、DOMParser——每一样单独看都是前端基础课里的东西，单独用也都不稀奇。微前端的复杂度在于把它们串起来时，每一处都要考虑「如果这里不补一刀会怎样」。
+
+沙箱那一章最典型。`with` + Proxy 五十行就能写出一个能跑的版本，但真到生产环境，光有五十行是不够的——`addEventListener` 不清会泄漏，`setInterval` 不清会泄漏，`document.querySelector` 不限范围会查到别人的 DOM，`history.pushState` 不管会改掉基座的地址栏。手册第三章的后半部分（§3.10 源码级实现）整整 340 行，全在讲这些「一刀」。**原理是干净的，落地是脏的。**
+
+另一个体会是关于写文档这件事本身。我一开始想按知识点组织——沙箱、通信、路由各写一章。写到一半发现不行，因为读者（其实是我自己）真正会问的问题是「菜单点一下，到底发生了什么」。所以最后加了第 0 章那张全景图和 §5.4 的挂载时序，把纵向的时间轴摆在横向的知识点前面。**先给一条能走通的路，再解释路上的每一块砖**，比堆术语好用得多。
+
+最后是那个实验室。手册写到第七遍「读穿透、写隔离」的时候，我意识到这句话我已经能背了，但还是说不清某个具体场景下到底走的是哪条分支。于是把 Proxy 的 `get` / `set` / `has` 做成了能单步触发的东西——自己动手点两次，比读十遍强。这也算是把 10 月 15 日那篇里 Karpathy 的说法真正用了一次：文字适合查阅，交互网页适合自己动手探索，两者不是替代关系。

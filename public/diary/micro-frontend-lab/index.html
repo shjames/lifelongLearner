@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KPay 微前端实验室 · micro-app 原理实操</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">◧</span>
+        <span>KPay 微前端实验室</span>
+        <span class="ver">micro-app 1.0 原理 · 实操</span>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress"><div class="bar" id="progressBar"></div></div>
+        <span class="progress-text" id="progressText">0 / 7</span>
+      </div>
+    </header>
+
+    <div class="layout">
+      <nav class="sidebar" id="sidebar" aria-label="实验室目录"></nav>
+      <main class="content" id="content"></main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <footer class="footer">
+      配套文档：<code>.claude/output/ArchitectureLearning/micro-frontend-handbook.md</code>
+      · 所有示例均在本页真实执行，不依赖网络
+    </footer>
+
+    <script src="core.js"></script>
+    <script src="mini/micro-app-lite.js"></script>
+    <script src="labs/lab1-custom-elements.js"></script>
+    <script src="labs/lab2-style-isolation.js"></script>
+    <script src="labs/lab3-sandbox.js"></script>
+    <script src="labs/lab4-loader.js"></script>
+    <script src="labs/lab5-communication.js"></script>
+    <script src="labs/lab6-router.js"></script>
+    <script src="labs/lab7-mini-micro-app.js"></script>
+    <script src="boot.js"></script>
+  </body>
+</html>
