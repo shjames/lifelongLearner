@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>osSupplement 接口术语表</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;padding:16px 12px 48px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;background:#f4f4f2;color:#1f1f1d;font-size:14px;line-height:1.6}
+h1{font-size:17px;font-weight:600;margin:0 0 4px}
+.sub{font-size:12px;color:#7a7a75;margin:0 0 14px;line-height:1.5}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.card{background:#fff;border:1px solid #e2e2dd;border-radius:12px;margin-bottom:14px;overflow:hidden}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;background:#fafaf8;border-bottom:1px solid #eeeee9}
+.card-t{font-size:14px;font-weight:600}
+.card-n{font-size:11px;color:#8a8a84;font-weight:400;margin-left:6px}
+.btn{border:1px solid #d6d6d0;background:#fff;color:#3a3a37;font-size:12px;padding:5px 11px;border-radius:999px;font-family:inherit;white-space:nowrap}
+.btn:active{background:#eaeae5}
+.btn.ok{background:#e7f4ec;border-color:#9ecfb2;color:#1d6b42}
+ul{list-style:none;margin:0;padding:0}
+li{padding:11px 14px;border-bottom:1px solid #f0f0ec}
+li:last-child{border-bottom:0}
+li:active{background:#f6f6f2}
+.w{font-weight:600;font-size:14px;color:#1a1a18}
+.row{display:flex;gap:6px;margin-top:5px;align-items:flex-start}
+.tag{flex:none;font-size:11px;line-height:18px;padding:0 6px;border-radius:4px;margin-top:1px}
+.t1{background:#f0f0ec;color:#6b6b66}
+.t2{background:#e6f1fb;color:#185fa5}
+.txt{font-size:13px;color:#5c5c57;line-height:1.55}
+.hint{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:#1f1f1d;color:#fff;font-size:12px;padding:8px 14px;border-radius:999px;opacity:0;transition:opacity .18s;pointer-events:none;max-width:80%;text-align:center}
+.hint.show{opacity:1}
+@media (prefers-color-scheme: dark){
+body{background:#141413;color:#e8e8e4}
+h1{color:#f2f2ee}
+.sub{color:#8e8e88}
+.card{background:#1e1e1c;border-color:#2e2e2b}
+.card-h{background:#191918;border-color:#2b2b28}
+.btn{background:#232320;border-color:#3a3a36;color:#d8d8d3}
+.btn:active{background:#2c2c28}
+.btn.ok{background:#1d3a2a;border-color:#2f6b4a;color:#9fe0bb}
+.w{color:#f0f0ec}
+.txt{color:#a8a8a2}
+.t1{background:#2a2a27;color:#a8a8a2}
+.t2{background:#1a2c3d;color:#85b7eb}
+li{border-color:#262624}
+li:active{background:#232320}
+.hint{background:#f0f0ec;color:#141413}
+}
+</style>
+</head>
+<body>
+<div class="top">
+  <div>
+    <h1>osSupplement/page 接口术语表</h1>
+    <p class="sub">每条三行：单词 → 语义（字面意思与译文）→ 在本业务中的角色。轻点任意一条可复制该条。</p>
+  </div>
+  <button class="btn" id="copyAll">复制全部</button>
+</div>
+<div id="app"></div>
+<div class="hint" id="hint"></div>
+<script>
+var DATA = [
+{ title: '一、请求与网络', items: [
+['API / 接口', 'Application Programming Interface 的缩写，直译"应用程序编程接口"。日常指一方提供给另一方调用的一组能力入口', '本接口就是后端暴露给前端的入口：/api/v1/osSupplement/page'],
+['URL / 路径', 'Uniform Resource Locator，统一资源定位符，即"网址"；path 路径指域名之后的部分', '浏览器请求的完整地址；代码里只能看到 /v1/osSupplement/page，前缀 /api 由网关添加'],
+['GET', '英文"获取"。HTTP 协议中表示"只读取数据、不修改"的请求方法', '本接口用它，所以筛选条件只能拼在 URL 的 ? 后面，不能放进请求体'],
+['query 参数', 'query 意为"查询"，指 URL 问号后面那串 key=value', 'supplementType、page、rows 等筛选与分页条件都以它传递'],
+['端口', 'port 原意"港口"，计算机中指一台机器上区分不同服务的编号', 'crm-admin 监听 7011，merchant-digital 监听 18080，网关按端口把请求送进对应进程'],
+['服务', 'service 意为"服务"，指可独立部署运行的程序单元', '这条链路跨两个服务：kpay-crm-admin 与 kpay-merchant-digital'],
+['网关 / Ingress', 'gateway 直译"大门、入口"；Ingress 是 Kubernetes 中对"集群入口"的定义', '外部流量进入集群的第一道关卡，它加上 /api 前缀，转发时再去掉，所以代码里看不到'],
+['Nginx', '一款高性能 Web 服务器与反向代理软件，读作"恩静克斯"', '网关层的常见实现，负责把 /api/... 转给 crm-admin 的 7011 端口'],
+['转发 / 代理', 'proxy 意为"代理人"，forward 意为"转交"', 'crm-admin 自己不查库，把请求原样交给 digital，扮演代理角色'],
+['context-path', 'context 意为"上下文"，path 意为"路径"，合起来是"应用上下文路径"，即整个应用统一的路径前缀', 'crm-admin 没配置它，所以 /api 不可能是应用自己加的，只能来自网关'],
+['驼峰命名', 'camelCase，因大小写起伏像驼峰得名。指首单词小写、后续单词首字母大写', '/v1/osSupplement 是驼峰写法；digital 的 /v1/os/supplement 是斜杠分层，两者不是同一个接口'],
+['联调', '联合调试，前后端对着同一套环境互相验证接口', '你要把 7011 和 18080 两个服务都起着，这条链才走得通'],
+['集群', 'cluster 原意"一串、一群"，指多台机器跑同一套服务、对外表现为一个', '配置里的 profile 决定连哪套集群，连错环境就查不到数据'],
+['500 HTML', '500 是 HTTP 的"服务器内部错误"状态码，HTML 是网页格式', '异常没被捕获时 Tomcat 默认回一个 500 网页；本项目用全局异常处理器改成统一 JSON']
+]},
+{ title: '二、Java / Kotlin 语言', items: [
+['类 class', 'class 原意"类别、班级"，编程中指一类事物的模板或图纸', 'OsSupplementPageRequest 是"分页请求"的模板，每次请求按它造一份对象'],
+['方法 method', 'method 原意"方法、办法"，编程中指类里定义的一段可执行逻辑', 'Controller 的 page() 就是处理这个接口的方法'],
+['字段 field', 'field 原意"田地、领域"，编程中指类里存放数据的变量', 'supplementType、page、rows 都是 DTO 字段，与前端的 query 参数一一对应'],
+['接口 interface', 'interface 原意"界面、交接处"，编程中指只写"能做什么"、不写"怎么做"的契约', 'IOsSupplementV1Service、OsSupplementMapper、OsSupplementInterface 都是这种只定规则的接口'],
+['实现类', 'implementation 意为"实现、落地"，指真正写出接口里那些方法逻辑的类', 'OsSupplementV1ServiceImpl 就是 IOsSupplementV1Service 的实现，转发逻辑在这里'],
+['实例 / 对象', 'instance 意为"实例、例子"，object 意为"物体"。指按类造出来的具体一份数据', '每次请求都会造一份新的 request 对象，装这一次的参数'],
+['new', '英文"新的"，编程中是创建对象的关键字', 'new PageData<>(count, list) 造出返回给前端的分页对象'],
+['构造器', 'constructor 意为"建造者"，指创建对象时自动执行的方法', 'Controller 的构造器参数就是让 Spring 把 Service 传进来'],
+['包名 package', 'package 原意"包裹"，Java 中指类的命名空间，相当于文件夹路径', '两个同名的 OsSupplementPageRequest 靠包名（crm.base 与 merchant.digital）区分，是两个无关的类'],
+['泛型 <T>', 'generic 意为"通用的"，T 是 Type（类型）的占位符', 'Wrapper<PageData<X>> 表示"外壳里装分页，分页里装 X 这种数据"'],
+['反射', 'reflection 原意"反射、倒影"，编程中指运行时反过来查看和操作类自身结构的能力', 'Spring 靠它在运行时按名字把 URL 参数写进 DTO 字段'],
+['注解', 'annotation 意为"注解、标注"，指代码中以 @ 开头的标记', '@RestController、@GetMapping 本身不干活，由 Spring 扫描后决定怎么处理请求'],
+['枚举 enum', 'enumeration 的缩写，意为"枚举、逐一举出"，指取值范围固定的常量集合', 'OsSupplementTypeEnum 把 1/2 翻译成"基础资料审核补充""风控核查补充"'],
+['单例', 'singleton 意为"单个实例"，指全局只创建一个对象反复使用', 'Service、Controller 默认都是单例，所有请求共用同一个实例'],
+['序列化 / 反序列化', 'serialize 意为"串行化"，把对象变成可传输的字符串或字节；反序列化是逆向还原', 'Feign 发请求时把 DTO 转成 JSON，收响应时把 JSON 转回 Wrapper 对象'],
+['null', '英文"无、空值"，表示这里没有值', '前端参数名写错时，DTO 对应字段就是 null，接口不报错但筛选静默失效'],
+['Int? / String?', 'Kotlin 语法。Int 是整数类型，String 是字符串类型，问号表示"允许为空"', 'DTO 字段都是可空类型，因为前端可能不传某个筛选项'],
+['fun / val / var', 'Kotlin 关键字。fun=function 函数，val=value 不可变值，var=variable 可变变量', 'Controller 用 fun 定义 page 方法，用 val 定义注入进来的 Service 字段'],
+['?.', 'Kotlin 的"安全调用"运算符，问号表示"如果是空就停下，不要报错"', '用于避免下游返回 null 时抛空指针异常'],
+['List / ArrayList', 'list 意为"列表"，ArrayList 是可动态增长的数组实现', '一页 10 行查询结果就装在一个 List 里返回'],
+['Map', 'map 原意"地图、映射"，指"键到值"的查找表', '把"账号 ID 到姓名"装进 Map，回填时可以直接查到'],
+['Set / LinkedHashSet', 'set 意为"集合"，数学上是不重复元素的集合；Linked 表示保持插入顺序', '收集本页所有账号 ID 时用它去重，避免同一个 ID 查两次'],
+['for 循环', 'for 意为"对于"，表示对集合中每个元素依次执行', '把本页 10 行逐行转成 admin 侧的 DTO'],
+['Optional', 'optional 意为"可选的"，Java 中是一个"可能为空"的容器', 'PageUtils 用它给 page、rows 兜默认值，不传就取 1 和 10'],
+['@Override', 'override 意为"覆盖、重写"，标记这个方法是实现接口或父类的同名方法', 'ServiceImpl 的 page 方法加它，表示实现接口中声明的那一个']
+]},
+{ title: '三、Spring 框架', items: [
+['Spring / Spring Boot', 'spring 原意"春天、弹簧"，是 Java 最主流的开发框架名；Boot 意为"引导、快速启动"', '三个服务都由它搭建，负责创建对象、接收 HTTP、连接数据库'],
+['Bean / 容器', 'bean 原意"豆子"，是 Java 的标志物，引申为 Java 对象；container 意为"容器"', 'Service、Controller、Mapper 都是被 Spring 管理的 Bean，装在容器里统一创建'],
+['依赖注入 DI', 'Dependency Injection 直译"依赖注入"，指我需要什么由外部提供，而不是自己造', 'Controller 不 new Service，由 Spring 把实现类从外部传进构造器'],
+['构造器注入', '通过构造器参数把依赖传进去的一种注入方式', 'crm-admin 的 Controller 就是这种写法，参数直接是 IOsSupplementV1Service'],
+['@Resource', 'resource 意为"资源"，是 Java 的注解，表示"从这里取一个可用对象"', 'ServiceImpl 用它拿到 Mapper，不用自己创建'],
+['Controller', 'controller 意为"控制器、调度员"', '接住 /v1/osSupplement/page，把 URL 参数变成对象、调 Service、包 Wrapper，不写业务'],
+['Service', 'service 意为"服务"，分层中指承载业务逻辑的那一层', 'crm-admin 的 Service 只做 DTO 转换和远程调用；digital 的 Service 才做真正的查询与组装'],
+['Mapper', 'mapper 意为"映射器"，指把 Java 方法映射到 SQL 的组件', 'OsSupplementMapper 的两个方法分别对应 count 和 list 两条 SQL'],
+['分层', 'layering，把职责按层切开，每层只干一类事', 'Controller 管协议、Service 管流程、Mapper 管 SQL，出问题按层定位'],
+['@RestController', 'Rest 指 REST 风格接口，controller 是控制器，合起来是"REST 接口控制器"', '标记这个类的方法返回值直接序列化成 JSON 响应体'],
+['@RequestMapping', 'mapping 意为"映射"，把 URL 路径映射到类或方法', '类上写 /v1/osSupplement，方法上写 /page，拼成完整路径'],
+['@GetMapping', 'Get 是 HTTP 读取方法，mapping 是映射，即"处理 GET 请求的映射"', '限定 page() 只接受 GET，用 POST 调会返回方法不支持'],
+['@Service', '标记这个类属于业务层组件', '让 Spring 创建 OsSupplementV1ServiceImpl 并放进容器'],
+['@Mapper', '标记这个接口由 MyBatis 负责生成实现', '启动时给 OsSupplementMapper 造出代理对象，方法调用转成 SQL 执行'],
+['@Validated', 'validated 意为"已校验的"，开启方法级参数校验', '贴在 Controller 类上，让 @NotNull 这类规则生效'],
+['@Valid', 'valid 意为"有效的"，表示对该参数执行校验', '贴在 page 方法参数上，supplementType 为空时直接拦截'],
+['@NotNull', 'Not null，即"不能为空"', 'supplementType 是必填的 Tab 类型，不传就返回参数错误'],
+['Bean Validation', 'validation 意为"校验、验证"，Bean Validation 是 Java 官方的参数校验标准', '用注解声明规则、由 Spring 执行，失败时交给全局异常处理器'],
+['参数绑定', 'binding 意为"绑定、捆绑"，把 HTTP 参数捆到 Java 对象字段上', '?supplementType=1&page=0 被按名字填进 DTO，名字不一致就绑不上'],
+['DispatcherServlet', 'dispatch 意为"派遣、分发"，servlet 是 Java Web 的处理单元', 'Spring MVC 的总调度器，按路径找到 page() 并调用'],
+['路由表', 'route 意为"路线"，路由表是"地址到处理者"的对照表', '启动时扫描注解生成，/v1/osSupplement/page 指向 page 方法'],
+['Tomcat', 'Apache 基金会的 Java Web 服务器名，名字来自作者养的猫', '内嵌在 Spring Boot 中，监听 7011，把 HTTP 字节流解析成请求对象'],
+['@RestControllerAdvice', 'advice 在面向切面编程中指"增强、通知"，这里指对全体 Controller 的统一增强', 'ExceptionAdvice 用它兜住所有异常，统一转成 Wrapper.fail'],
+['全局异常处理器', '集中捕获并处理整个应用所抛异常的一处代码', '参数校验失败、Feign 超时、未知异常都在这里转成结构化 JSON'],
+['BFF / gateway', 'Backend for Frontend 直译"为前端服务的后端"；gateway 意为"网关"', 'crm-admin 就是这个角色，只做协议转换与转发，不碰数据库']
+]},
+{ title: '四、远程调用与响应结构', items: [
+['Feign', '英文动词"假装、伪装"，技术上是"伪装成普通接口"的 HTTP 客户端', '让 crm-admin 像调本地方法一样调 digital 的 /v1/os/supplement/page'],
+['声明式', 'declarative 意为"声明式的"，只说要什么、不说怎么做', '只写接口和注解，Feign 负责拼 URL、发请求、解析响应'],
+['动态代理', 'proxy 意为"代理人"，动态指运行时才生成，不是编译期写死', 'Feign 运行时给 OsSupplementInterface 生成实现类，所以源码里搜不到 page() 的实现'],
+['SDK', 'Software Development Kit，软件开发工具包，这里指公司封装的客户端依赖', 'kpay-merchant-digital-sdk 里定义了 digital 所有接口的 Feign 声明，引依赖即用'],
+['@RequestLine', 'request 请求 + line 行，Feign 中指"一行声明一个请求"', '@RequestLine("GET /v1/os/supplement/page") 定义了请求方法和路径'],
+['@QueryMap', 'query 查询 + map 映射，把对象字段映射成 URL 查询参数', '把 DTO 的 supplementType、page、rows 拼成 ?a=1&b=2'],
+['@FeignClient', 'Spring Cloud 对 Feign 客户端的声明注解，声明这个接口调哪个服务', '本项目只在导出接口 OsSupplementV1Client 上用它；分页走的是 SDK 里的原生 Feign'],
+['Jackson', '人名与品牌名，这里指 Java 最常用的 JSON 处理库', 'Feign 发请求时把对象转 JSON，收响应时把 JSON 转回对象'],
+['Wrapper<T>', 'wrapper 意为"包装纸、外壳"，指把内容包起来的那层', '统一响应体，字段 code、message、data，所有接口都返回它'],
+['PageData<T>', 'page 页 + data 数据，即"一页的数据"', '装 totalCount（总条数）和 data（当前页列表），前端分页器靠它渲染'],
+['totalCount', 'total 总计 + count 计数，即总条数', 'count SQL 查出来的值，决定前端分页器一共有几页'],
+['code', '代码、编码，响应体中指"业务状态码"', '成功是 10000，不是 HTTP 的 200；前端靠它判断成功与否'],
+['message', '消息、提示语', '失败时放错误文案；成功时是 null，所以不能用它判断成功'],
+['data', '数据', '真正返回给前端的业务内容，分页时是一个 PageData 对象'],
+['拆包', '把包装拆开，取出里面的东西', 'WrapperUtils.getData 从 Wrapper 里取出 data，取不到就抛异常给上层'],
+['装箱', '把东西装进包装里', '把查询结果塞进 PageData，再塞进 Wrapper 返回']
+]},
+{ title: '五、数据库 / MyBatis / SQL', items: [
+['MyBatis', 'my 我的 + batis，源自 iBATIS，一个 Java 持久层框架名', '负责把 Mapper 方法和 XML 里的 SQL 对应起来并执行'],
+['Mapper XML', 'XML 是一种标记语言格式，Mapper XML 即存放 SQL 的映射文件', 'OsSupplementMapperExtend.xml 里放着 count 和 list 两条查询'],
+['id', 'identifier 的缩写，意为标识符', '<select id="selectListForPage"> 必须和方法名一致，否则启动就报绑定失败'],
+['resultType', 'result 结果 + type 类型，即结果类型', '规定每一行查询结果装进 OsSupplementPageResponse 这个类'],
+['#{}', 'MyBatis 的占位符语法，花括号里写参数名', '编译成 JDBC 的 ? 再填值，能防 SQL 注入，如 #{request.supplementType}'],
+['${}', '同样是占位符，但做的是字符串直接替换', '有注入风险，本项目没有使用'],
+['SQL 注入', 'injection 意为"注入"，指把恶意 SQL 混进参数里让数据库执行', '#{} 预编译能防住，${} 拼字符串防不住'],
+['预编译', 'pre 预先 + compile 编译，先把 SQL 骨架编译好，再传参数值', '参数只被当成值，不会被当成 SQL 语句解析'],
+['JDBC', 'Java Database Connectivity，Java 访问数据库的标准接口', 'MyBatis 底层就是通过它把 SQL 发给 PostgreSQL'],
+['LEFT JOIN', 'left 左 + join 连接，保留左表所有行，右表匹配不上就填 null', '企业被软删也不丢补件单行，保证列表不会凭空少数据'],
+['JOIN', '连接，把多张表按条件拼成一张宽表', '一对多时会把行数放大，所以本项目的筛选改用 EXISTS'],
+['子查询', 'sub 子 + query 查询，指嵌在另一条 SQL 里的查询', 'EXISTS 里那段 SELECT 就是子查询'],
+['EXISTS', '英文"存在"，SQL 中表示"子查询能查到至少一行就成立"', '筛店铺、商户、状态时用它，避免 join 导致 count 翻倍'],
+['string_agg', 'string 字符串 + agg 聚合（aggregate 的缩写）', '把一个企业下多个店铺的字段拼成 101,102 这样的字符串，回 Java 再拆'],
+['聚合函数', 'aggregate 意为"聚集、合计"，指把多行算成一个值的函数', 'count 数条数、string_agg 拼字符串，都是为了避免多行打乱分页'],
+['GROUP BY', 'group 分组 + by 按，即按某列分组', '按 company_id 分组后，才好在组内做 string_agg'],
+['ORDER BY', 'order 排序 + by 按，即按某列排序', '按 create_time DESC 倒序，最新的补件单排最前'],
+['LIMIT / OFFSET', 'limit 限制（取多少条）、offset 偏移（跳过多少条）', 'LIMIT 10 OFFSET 0 就是取 10 条、从第 0 条开始，实现分页'],
+['偏移量', 'offset 的中文译名，指从开头跳过多少条', '本项目 page 字段传的其实是它；page=10、rows=10 表示第二页'],
+['ILIKE', 'I 表示 insensitive（不区分大小写）+ LIKE 模糊匹配', '按编号、名称搜索时忽略大小写'],
+['软删', 'soft delete，不物理删除，只把记录标记成"已删除"', '用 deleted = 0/1 标记，所有查询都带 deleted = 0'],
+['主表 / 主单', 'main 指主要的那张表，其余是附属', 'os_supplement 一张补件单一行，是主单'],
+['子单', 'sub 子，指附属于主单的记录', 'os_supplement_entity 按企业、店铺、商户拆成多行，各自带状态'],
+['明细', 'detail，指单据里逐条的具体项目', 'os_supplement_item 存每个要补充的字段和问题'],
+['KV 表', 'Key-Value 键值对，一个字段存一行，而不是一列一个字段', 'company_kv、shop_kv 存企业和店铺的动态字段，如企业名称'],
+['N+1 查询', '指"1 次主查询加 N 次子查询"的反模式，行数越多越慢', '本项目收集本页所有账号 ID 后一次批量查，避免在循环里逐条查'],
+['批量查询', 'batch 批量，一次请求处理多条数据', 'accountComponent.getByIds(ids) 一次把一页涉及的账号名全查回来'],
+['派生字段', 'derive 派生，指不是原始存储、而是由其他数据算出来的值', '类型文案、状态文案、多值拆分、回复人显示名，都是查库后补出来的'],
+['中间字段', 'intermediate 中间的，只在处理过程中使用、不对外输出的字段', 'contactPhonesAgg 这类聚合串，最后会置 null，不返回给前端']
+]},
+{ title: '六、本项目业务词', items: [
+['O/S 补充资料', 'O 与 S 是审核环节两个阶段的代号，补充资料即让客户补交材料', '本页面的主体单据，一条记录代表一次补件要求'],
+['补件单', '补（补充）+ 件（材料），即要求补充材料的单据', '对应表 os_supplement，列表每行就是一张补件单'],
+['supplementType', 'supplement 补充 + type 类型，即"补充资料的类型"', '1 基础资料审核补充、2 风控核查补充；也是列表顶部 Tab，必填'],
+['supplementState', 'state 状态，即补件单的状态', '1 待补充问题、2 待回复、3 已回复、4 已失效；筛选时按子单状态过滤'],
+['Tab', 'tabulator 的缩写，原指打字机的制表键，界面中指顶部切换标签', '页面上的"基础资料""风控核查"两个标签，切换时改 supplementType 重新请求'],
+['主体', 'subject，指被处理的对象本身', '补件单挂在谁名下：企业 COMPANY、店铺 SHOP、商户 MERCHANT'],
+['CRM', 'Customer Relationship Management，客户关系管理', 'crm-admin 就是这套后台的接口服务，本接口供 CRM 页面使用'],
+['admin', 'administration 的缩写，意为管理后台', '口语中指 kpay-crm-admin 服务，端口 7011'],
+['digital', 'digital 意为"数字化的"', '口语中指 kpay-merchant-digital 服务，端口 18080，真正存商户和企业数据'],
+['上单来源', '来源即"从哪里来"，上单指客户提交进件', '存在 shop.data_source，如 CRM_PC、CRM_APP，列表里多值展示'],
+['负责销售', '负责（归谁管）+ 销售（sales）', '库里存账号 ID，列表要批量换成姓名展示'],
+['回复人', '回复（reply）+ 人，指做出回复动作的那一方', '分 KPay 员工和客户两类，决定显示真实姓名还是"客戶"'],
+['KPay 员工', '公司内部工作人员', 'replyAccountType = 1，显示账号真实姓名'],
+['客户', 'customer，指外部商户', 'replyAccountType = 2，统一显示"客戶"，不暴露具体账号'],
+['账号服务', '存放人员账号信息的独立服务', 'digital 通过它把账号 ID 批量换成姓名'],
+['风控核查', '风险控制 + 核查，指对商户做风险审查的环节', '审核节点 audit_state = 7，此阶段发起的补件类型是 2'],
+['基础资料审核', '对企业基础信息（名称、证照等）的审核环节', '审核节点 audit_state = 3 或 4，此阶段发起的补件类型是 1']
+]}
+];
+
+var app = document.getElementById('app');
+var hintEl = document.getElementById('hint');
+var hintTimer = null;
+
+function toast(msg) {
+  hintEl.textContent = msg;
+  hintEl.className = 'hint show';
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(function(){ hintEl.className = 'hint'; }, 1400);
+}
+
+function flash(btn, text) {
+  if (!btn) return;
+  if (!btn.getAttribute('data-label')) btn.setAttribute('data-label', btn.textContent);
+  btn.textContent = text;
+  btn.className = 'btn ok';
+  setTimeout(function(){
+    btn.textContent = btn.getAttribute('data-label');
+    btn.className = 'btn';
+  }, 1200);
+}
+
+function fallbackCopy(text, done) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.top = '-9999px';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  ta.setSelectionRange(0, text.length);
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  if (ok) { done(); } else { toast('复制失败，请长按文字手动选择'); }
+}
+
+function copyText(text, done) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done).catch(function(){ fallbackCopy(text, done); });
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+
+function itemText(item) {
+  return item[0] + '\n语义：' + item[1] + '\n业务：' + item[2];
+}
+
+DATA.forEach(function(group){
+  var card = document.createElement('section');
+  card.className = 'card';
+
+  var head = document.createElement('div');
+  head.className = 'card-h';
+
+  var title = document.createElement('div');
+  title.className = 'card-t';
+  title.textContent = group.title;
+  var num = document.createElement('span');
+  num.className = 'card-n';
+  num.textContent = group.items.length + ' 条';
+  title.appendChild(num);
+
+  var btn = document.createElement('button');
+  btn.className = 'btn';
+  btn.textContent = '复制本组';
+
+  head.appendChild(title);
+  head.appendChild(btn);
+  card.appendChild(head);
+
+  var ul = document.createElement('ul');
+  group.items.forEach(function(item){
+    var li = document.createElement('li');
+
+    var w = document.createElement('div');
+    w.className = 'w';
+    w.textContent = item[0];
+
+    var r1 = document.createElement('div');
+    r1.className = 'row';
+    var t1 = document.createElement('span');
+    t1.className = 'tag t1';
+    t1.textContent = '语义';
+    var x1 = document.createElement('span');
+    x1.className = 'txt';
+    x1.textContent = item[1];
+    r1.appendChild(t1);
+    r1.appendChild(x1);
+
+    var r2 = document.createElement('div');
+    r2.className = 'row';
+    var t2 = document.createElement('span');
+    t2.className = 'tag t2';
+    t2.textContent = '业务';
+    var x2 = document.createElement('span');
+    x2.className = 'txt';
+    x2.textContent = item[2];
+    r2.appendChild(t2);
+    r2.appendChild(x2);
+
+    li.appendChild(w);
+    li.appendChild(r1);
+    li.appendChild(r2);
+
+    li.addEventListener('click', function(){
+      copyText(itemText(item), function(){ toast('已复制：' + item[0]); });
+    });
+    ul.appendChild(li);
+  });
+  card.appendChild(ul);
+
+  btn.addEventListener('click', function(){
+    var text = '【' + group.title + '】\n\n' + group.items.map(itemText).join('\n\n');
+    copyText(text, function(){ toast('已复制整组：' + group.title); flash(btn, '已复制'); });
+  });
+
+  app.appendChild(card);
+});
+
+document.getElementById('copyAll').addEventListener('click', function(){
+  var btn = this;
+  var text = 'osSupplement/page 接口术语表\n格式：单词 / 语义 / 业务角色\n\n' + DATA.map(function(group){
+    return '【' + group.title + '】\n\n' + group.items.map(itemText).join('\n\n');
+  }).join('\n\n');
+  copyText(text, function(){ toast('已复制全部 ' + countAll() + ' 条'); flash(btn, '已复制'); });
+});
+
+function countAll() {
+  var n = 0;
+  DATA.forEach(function(g){ n += g.items.length; });
+  return n;
+}
+</script>
+</body>
+</html>
